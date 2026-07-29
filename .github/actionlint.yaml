@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # Custom labels of the repo's self-hosted runner
+  labels:
+    - agentic
