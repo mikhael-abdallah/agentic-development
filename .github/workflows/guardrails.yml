@@ -17,9 +17,10 @@ jobs:
     runs-on: [self-hosted, linux, agentic]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Scan full git history with gitleaks
         env:
@@ -37,7 +38,9 @@ jobs:
     runs-on: [self-hosted, linux, agentic]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Lint GitHub Actions workflows with actionlint
         env:
@@ -51,6 +54,58 @@ jobs:
           fi
           "$TOOL/actionlint" -color
 
+  workflow-security:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Audit workflows with zizmor
+        env:
+          ZIZMOR_VERSION: 1.28.0
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TOOL="$RUNNER_TOOL_CACHE/zizmor/$ZIZMOR_VERSION"
+          if [ -z "$(find "$TOOL" -name zizmor -type f 2>/dev/null)" ]; then
+            mkdir -p "$TOOL"
+            curl -sSfL "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+              | tar -xz -C "$TOOL"
+          fi
+          BIN=$(find "$TOOL" -name zizmor -type f | head -1)
+          "$BIN" --min-severity medium .github/workflows/
+
+  dup-check:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Detect copy-paste duplication with jscpd
+        run: npx --yes jscpd@5.0.14 --threshold 2 --min-tokens 50 --ignore "**/.git/**" .
+
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 5
+    steps:
+      - name: Enforce Conventional Commit PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Title: $PR_TITLE"
+          if ! printf '%s' "$PR_TITLE" | grep -qE '^(feat|fix|docs|refactor|test|perf|ci|chore|build)(\([a-z0-9./-]+\))?!?: .{1,72}$'; then
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat(engine): add latency model'. Squash merges turn it into the commit message."
+            exit 1
+          fi
+
   pr-guard:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, agentic]
@@ -59,9 +114,10 @@ jobs:
       MAX_CHANGED_LINES: 1000
       MAX_CHANGED_FILES: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Enforce PR size limits
         run: |
@@ -74,3 +130,12 @@ jobs:
             echo "::error::PR too large. Split it into smaller increments."
             exit 1
           fi
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
