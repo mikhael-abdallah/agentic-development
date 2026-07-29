@@ -14,7 +14,7 @@ The premise: code here is written by AI agents, not reviewed line-by-line by me.
 - Auto-merge is enabled: a green PR merges itself. A red one goes back to the agent.
 - CI runs on a self-hosted runner; workflow runs from outside contributors require manual approval.
 
-Stack-specific checks (lint, tests, coverage) are added to the same pipeline as the codebase grows.
+Stack-specific checks (lint, tests, coverage) are added to the same pipeline as the codebase grows — see the [guardrails roadmap](ROADMAP.md).
 
 ## Roadmap
 
