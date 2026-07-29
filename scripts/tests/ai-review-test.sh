@@ -17,9 +17,12 @@ cd "$work/repo"
 git config user.name test
 git config user.email test@test
 cp -r "$repo_root/scripts" scripts
+cp -r "$repo_root/.githooks" .githooks
 git checkout -q -b feature
 echo "some change" > file.txt
 git add . && git commit -qm "feat: change"
+feature_sha=$(git rev-parse HEAD)
+zero_sha=$(printf '0%.0s' {1..40})
 
 # claude stub: swallows stdin, prints $STUB_OUTPUT (\n-interpreted).
 mkdir "$work/bin"
@@ -61,5 +64,37 @@ check "oversized diff exits 1" 1 \
   env AI_REVIEW_MAX_DIFF_BYTES=1 STUB_OUTPUT='VERDICT: APPROVE'
 check "skip flag exits 0 without reviewing" 0 \
   env SKIP_AI_REVIEW=1 STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
+
+# pre-push hook: reviews pushed branch shas, skips deletions and non-branches.
+hook() {
+  local stdin_line=$1
+  shift
+  printf '%s\n' "$stdin_line" | env "$@" .githooks/pre-push
+}
+check_hook() {
+  local name=$1 expected=$2
+  shift 2
+  local got=0
+  hook "$@" >/dev/null 2>&1 || got=$?
+  if [ "$got" -eq "$expected" ]; then
+    echo "ok: $name"
+  else
+    echo "FAIL: $name (expected exit $expected, got $got)"
+    fail=1
+  fi
+}
+
+check_hook "hook reviews pushed branch (approve)" 0 \
+  "refs/heads/feature $feature_sha refs/heads/feature $zero_sha" \
+  STUB_OUTPUT='VERDICT: APPROVE'
+check_hook "hook blocks pushed branch (request-changes)" 1 \
+  "refs/heads/feature $feature_sha refs/heads/feature $zero_sha" \
+  STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
+check_hook "hook skips branch deletion" 0 \
+  "refs/heads/feature $zero_sha refs/heads/feature $feature_sha" \
+  STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
+check_hook "hook skips tags" 0 \
+  "refs/tags/v1 $feature_sha refs/tags/v1 $zero_sha" \
+  STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
 
 exit "$fail"

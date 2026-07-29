@@ -32,6 +32,9 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 1
 fi
 
+# Short-circuit for interactive runs only. On the hook path, target is a sha:
+# an in-sync main falls out at the no-changes check below, and a main push
+# with new commits is reviewed (harmless — the remote ruleset blocks it anyway).
 if [ "$target" = "HEAD" ] && [ "$(git rev-parse --abbrev-ref HEAD)" = "$BASE_BRANCH" ]; then
   echo "ai-review: on $BASE_BRANCH, nothing to review"
   exit 0
@@ -41,21 +44,25 @@ if ! git fetch -q "$BASE_REMOTE" "$BASE_BRANCH"; then
   echo "ai-review: cannot fetch $BASE_REMOTE/$BASE_BRANCH (offline?) — bypass with SKIP_AI_REVIEW=1 if you must" >&2
   exit 1
 fi
-base=$(git merge-base "$BASE_REMOTE/$BASE_BRANCH" "$target")
+if ! base=$(git merge-base "$BASE_REMOTE/$BASE_BRANCH" "$target"); then
+  echo "ai-review: cannot find a merge base between $BASE_REMOTE/$BASE_BRANCH and $target — is '$target' a valid ref?" >&2
+  exit 1
+fi
 
 if git diff --quiet "$base" "$target"; then
   echo "ai-review: no changes in $target vs $BASE_REMOTE/$BASE_BRANCH"
   exit 0
 fi
 
-commits=$(git log --format='%h %s' "$base".."$target")
-diff=$(git diff "$base" "$target")
-
-diff_bytes=$(printf '%s' "$diff" | wc -c)
+# Size check streams before the diff is materialized in memory.
+diff_bytes=$(git diff "$base" "$target" | wc -c)
 if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
   echo "ai-review: diff too large ($diff_bytes bytes > $MAX_DIFF_BYTES) — split the branch into smaller increments" >&2
   exit 1
 fi
+
+commits=$(git log --format='%h %s' "$base".."$target")
+diff=$(git diff "$base" "$target")
 
 # Random fence: diff content cannot fake its own boundary, and the reviewer
 # is told everything inside it is untrusted data.
