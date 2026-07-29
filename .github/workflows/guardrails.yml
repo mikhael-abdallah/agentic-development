@@ -1,0 +1,76 @@
+name: guardrails
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guardrails-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan full git history with gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          TOOL="$RUNNER_TOOL_CACHE/gitleaks/$GITLEAKS_VERSION"
+          if [ ! -x "$TOOL/gitleaks" ]; then
+            mkdir -p "$TOOL"
+            curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+              | tar -xz -C "$TOOL" gitleaks
+          fi
+          "$TOOL/gitleaks" git --no-banner --redact .
+
+  workflow-lint:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint GitHub Actions workflows with actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          TOOL="$RUNNER_TOOL_CACHE/actionlint/$ACTIONLINT_VERSION"
+          if [ ! -x "$TOOL/actionlint" ]; then
+            mkdir -p "$TOOL"
+            curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+              | tar -xz -C "$TOOL" actionlint
+          fi
+          "$TOOL/actionlint" -color
+
+  pr-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    env:
+      MAX_CHANGED_LINES: 1000
+      MAX_CHANGED_FILES: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce PR size limits
+        run: |
+          BASE=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
+          FILES=$(git diff --name-only "$BASE" HEAD | wc -l)
+          LINES=$(git diff --numstat "$BASE" HEAD | awk '{ added += $1; deleted += $2 } END { print added + deleted }')
+          echo "Changed files: $FILES (max $MAX_CHANGED_FILES)"
+          echo "Changed lines: $LINES (max $MAX_CHANGED_LINES)"
+          if [ "$FILES" -gt "$MAX_CHANGED_FILES" ] || [ "$LINES" -gt "$MAX_CHANGED_LINES" ]; then
+            echo "::error::PR too large. Split it into smaller increments."
+            exit 1
+          fi
