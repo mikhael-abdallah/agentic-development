@@ -2,6 +2,9 @@
 PRIVATE.md
 private/
 
+# Local AI review output (scripts/ai-review.sh)
+AI_REVIEW.md
+
 # Secrets & environment
 .env
 .env.*
