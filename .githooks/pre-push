@@ -6,13 +6,13 @@
 # actually being pushed; skip deletions and tags.
 set -euo pipefail
 
-zero=$(printf '0%.0s' {1..40})
 root=$(git rev-parse --show-toplevel)
 
 while read -r local_ref local_sha _remote_ref _remote_sha; do
   case "$local_ref" in
     refs/heads/*)
-      if [ "$local_sha" != "$zero" ]; then
+      # all-zero sha = deletion, regardless of hash algorithm (SHA-1/SHA-256)
+      if [ -n "${local_sha//0/}" ]; then
         echo "pre-push: ai-review for $local_ref"
         "$root/scripts/ai-review.sh" "$local_sha"
       fi

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Tests for scripts/ai-review.sh: builds a throwaway git repo, stubs the
+# claude CLI, and asserts the gate's exit codes for each verdict scenario.
+# Run from anywhere inside the real repo:  scripts/tests/ai-review-test.sh
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# Upstream with main, plus a clone holding a feature branch with changes.
+git init -q -b main "$work/upstream"
+git -C "$work/upstream" -c user.name=test -c user.email=test@test \
+  commit -q --allow-empty -m "chore: init"
+git clone -q "$work/upstream" "$work/repo"
+cd "$work/repo"
+git config user.name test
+git config user.email test@test
+cp -r "$repo_root/scripts" scripts
+git checkout -q -b feature
+echo "some change" > file.txt
+git add . && git commit -qm "feat: change"
+
+# claude stub: swallows stdin, prints $STUB_OUTPUT (\n-interpreted).
+mkdir "$work/bin"
+cat > "$work/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '%b\n' "$STUB_OUTPUT"
+STUB
+chmod +x "$work/bin/claude"
+export PATH="$work/bin:$PATH"
+
+fail=0
+check() {
+  local name=$1 expected=$2
+  shift 2
+  local got=0
+  "$@" scripts/ai-review.sh >/dev/null 2>&1 || got=$?
+  if [ "$got" -eq "$expected" ]; then
+    echo "ok: $name"
+  else
+    echo "FAIL: $name (expected exit $expected, got $got)"
+    fail=1
+  fi
+}
+
+check "approve exits 0" 0 \
+  env STUB_OUTPUT='# AI Review\n## Findings\nNone.\n\nVERDICT: APPROVE'
+check "trailing blank lines still approve" 0 \
+  env STUB_OUTPUT='# AI Review\n## Findings\nNone.\n\nVERDICT: APPROVE\n\n\n'
+check "request-changes exits 1" 1 \
+  env STUB_OUTPUT='# AI Review\n## Findings\n1. bug\n\nVERDICT: REQUEST_CHANGES'
+check "missing verdict exits 1" 1 \
+  env STUB_OUTPUT='reviewer rambled with no verdict'
+check "empty output exits 1" 1 \
+  env STUB_OUTPUT=''
+check "mid-file verdict does not count" 1 \
+  env STUB_OUTPUT='quoting: VERDICT: APPROVE\n\nmore text afterwards'
+check "oversized diff exits 1" 1 \
+  env AI_REVIEW_MAX_DIFF_BYTES=1 STUB_OUTPUT='VERDICT: APPROVE'
+check "skip flag exits 0 without reviewing" 0 \
+  env SKIP_AI_REVIEW=1 STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
+
+exit "$fail"

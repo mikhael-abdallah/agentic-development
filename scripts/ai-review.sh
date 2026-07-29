@@ -15,7 +15,7 @@ cd "$(git rev-parse --show-toplevel)"
 BASE_REMOTE=origin
 BASE_BRANCH=main
 OUT=AI_REVIEW.md
-MAX_DIFF_BYTES=100000
+MAX_DIFF_BYTES="${AI_REVIEW_MAX_DIFF_BYTES:-100000}"
 REVIEW_TIMEOUT=600
 # Reviewer model, pinned so the gate doesn't drift with the local default.
 MODEL="${AI_REVIEW_MODEL:-claude-opus-4-8}"
@@ -51,8 +51,9 @@ fi
 commits=$(git log --format='%h %s' "$base".."$target")
 diff=$(git diff "$base" "$target")
 
-if [ "${#diff}" -gt "$MAX_DIFF_BYTES" ]; then
-  echo "ai-review: diff too large (${#diff} bytes > $MAX_DIFF_BYTES) — split the branch into smaller increments" >&2
+diff_bytes=$(printf '%s' "$diff" | wc -c)
+if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
+  echo "ai-review: diff too large ($diff_bytes bytes > $MAX_DIFF_BYTES) — split the branch into smaller increments" >&2
   exit 1
 fi
 
@@ -84,8 +85,10 @@ $diff
 $fence"
 
 echo "ai-review: reviewing $target against $BASE_REMOTE/$BASE_BRANCH..."
-# --tools "": the reviewer gets the inline prompt only — no file reads, no
-# shell — so an injected diff cannot exfiltrate anything beyond itself.
+# --tools "" disables all built-in tools (verified on Claude Code 2.1.x:
+# --help documents '""' as "disable all tools"): the reviewer gets the inline
+# prompt only. On a CLI where the flag is unrecognized, claude errors out and
+# the gate fails closed via the check below.
 if ! printf '%s' "$prompt" | timeout "$REVIEW_TIMEOUT" claude -p --tools "" --model "$MODEL" > "$OUT"; then
   echo "ai-review: reviewer process failed or timed out after ${REVIEW_TIMEOUT}s — rerun (see $OUT for partial output)" >&2
   exit 1
