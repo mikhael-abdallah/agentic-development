@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
-# Runs the AI review loop before every push.
+# Runs the AI review loop before pushing the current branch.
 # Enable once per clone:  git config core.hooksPath .githooks
-exec scripts/ai-review.sh
+#
+# git feeds pushed refs on stdin; only review when the push includes the
+# checked-out branch (not tags, other branches, or remote deletions).
+set -euo pipefail
+
+current=$(git rev-parse --abbrev-ref HEAD)
+while read -r local_ref _local_sha _remote_ref _remote_sha; do
+  if [ "$local_ref" = "refs/heads/$current" ]; then
+    exec "$(git rev-parse --show-toplevel)/scripts/ai-review.sh"
+  fi
+done
+exit 0
