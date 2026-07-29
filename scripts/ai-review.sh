@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 # Local AI review loop (ROADMAP phase 5).
 #
-# Reviews this branch's diff against origin/main with a headless Claude and
-# writes the findings to AI_REVIEW.md (gitignored). Exits non-zero unless the
-# verdict is APPROVE, so it can gate a push: the coding agent reads the
-# findings, fixes them, and reruns until the review is clean.
+# Reviews a ref's diff against origin/main with a headless Claude and writes
+# the findings to AI_REVIEW.md (gitignored). Exits non-zero unless the verdict
+# is APPROVE, so it can gate a push: the coding agent reads the findings,
+# fixes them, and reruns until the review is clean.
 #
-# Usage:  scripts/ai-review.sh          (or automatically via .githooks/pre-push)
-# Bypass: SKIP_AI_REVIEW=1 git push    (emergencies only — the PR checks still run)
+# Usage:  scripts/ai-review.sh [ref]   (default HEAD; .githooks/pre-push
+#                                       passes each pushed branch sha)
+# Bypass: SKIP_AI_REVIEW=1 git push   (emergencies only — the PR checks still run)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 BASE_REMOTE=origin
 BASE_BRANCH=main
 OUT=AI_REVIEW.md
+MAX_DIFF_BYTES=100000
+REVIEW_TIMEOUT=600
+# Reviewer model, pinned so the gate doesn't drift with the local default.
+MODEL="${AI_REVIEW_MODEL:-claude-opus-4-8}"
+
+target="${1:-HEAD}"
 
 if [ "${SKIP_AI_REVIEW:-0}" = "1" ]; then
   echo "ai-review: skipped (SKIP_AI_REVIEW=1)"
@@ -25,22 +32,29 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 1
 fi
 
-branch=$(git rev-parse --abbrev-ref HEAD)
-if [ "$branch" = "$BASE_BRANCH" ]; then
+if [ "$target" = "HEAD" ] && [ "$(git rev-parse --abbrev-ref HEAD)" = "$BASE_BRANCH" ]; then
   echo "ai-review: on $BASE_BRANCH, nothing to review"
   exit 0
 fi
 
-git fetch -q "$BASE_REMOTE" "$BASE_BRANCH"
-base=$(git merge-base "$BASE_REMOTE/$BASE_BRANCH" HEAD)
+if ! git fetch -q "$BASE_REMOTE" "$BASE_BRANCH"; then
+  echo "ai-review: cannot fetch $BASE_REMOTE/$BASE_BRANCH (offline?) — bypass with SKIP_AI_REVIEW=1 if you must" >&2
+  exit 1
+fi
+base=$(git merge-base "$BASE_REMOTE/$BASE_BRANCH" "$target")
 
-if git diff --quiet "$base" HEAD; then
-  echo "ai-review: no changes vs $BASE_REMOTE/$BASE_BRANCH"
+if git diff --quiet "$base" "$target"; then
+  echo "ai-review: no changes in $target vs $BASE_REMOTE/$BASE_BRANCH"
   exit 0
 fi
 
-commits=$(git log --format='%h %s' "$base"..HEAD)
-diff=$(git diff "$base" HEAD)
+commits=$(git log --format='%h %s' "$base".."$target")
+diff=$(git diff "$base" "$target")
+
+if [ "${#diff}" -gt "$MAX_DIFF_BYTES" ]; then
+  echo "ai-review: diff too large (${#diff} bytes > $MAX_DIFF_BYTES) — split the branch into smaller increments" >&2
+  exit 1
+fi
 
 # Random fence: diff content cannot fake its own boundary, and the reviewer
 # is told everything inside it is untrusted data.
@@ -69,13 +83,17 @@ Diff:
 $diff
 $fence"
 
-echo "ai-review: reviewing $branch against $BASE_REMOTE/$BASE_BRANCH..."
-if ! printf '%s' "$prompt" | claude -p > "$OUT"; then
-  echo "ai-review: reviewer process failed — rerun (see $OUT for partial output)" >&2
+echo "ai-review: reviewing $target against $BASE_REMOTE/$BASE_BRANCH..."
+# --tools "": the reviewer gets the inline prompt only — no file reads, no
+# shell — so an injected diff cannot exfiltrate anything beyond itself.
+if ! printf '%s' "$prompt" | timeout "$REVIEW_TIMEOUT" claude -p --tools "" --model "$MODEL" > "$OUT"; then
+  echo "ai-review: reviewer process failed or timed out after ${REVIEW_TIMEOUT}s — rerun (see $OUT for partial output)" >&2
   exit 1
 fi
 
-verdict=$(tail -n 1 "$OUT" | tr -d '[:space:]')
+# Last non-empty line only: a VERDICT quoted mid-file (e.g. inside the diff)
+# must not count.
+verdict=$(awk 'NF {last=$0} END {print last}' "$OUT" | tr -d '[:space:]')
 case "$verdict" in
   VERDICT:APPROVE)
     echo "ai-review: APPROVE — see $OUT"
