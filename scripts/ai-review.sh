@@ -27,10 +27,12 @@ if [ "${SKIP_AI_REVIEW:-0}" = "1" ]; then
   exit 0
 fi
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "ai-review: 'claude' CLI not found in PATH" >&2
-  exit 1
-fi
+for dep in claude timeout; do
+  if ! command -v "$dep" >/dev/null 2>&1; then
+    echo "ai-review: '$dep' not found in PATH" >&2
+    exit 1
+  fi
+done
 
 # Short-circuit for interactive runs only. On the hook path, target is a sha:
 # an in-sync main falls out at the no-changes check below, and a main push
@@ -49,13 +51,13 @@ if ! base=$(git merge-base "$BASE_REMOTE/$BASE_BRANCH" "$target"); then
   exit 1
 fi
 
-if git diff --quiet "$base" "$target"; then
+# One streamed pass sizes the diff before it is materialized in memory;
+# zero bytes doubles as the no-changes check.
+diff_bytes=$(git diff "$base" "$target" | wc -c)
+if [ "$diff_bytes" -eq 0 ]; then
   echo "ai-review: no changes in $target vs $BASE_REMOTE/$BASE_BRANCH"
   exit 0
 fi
-
-# Size check streams before the diff is materialized in memory.
-diff_bytes=$(git diff "$base" "$target" | wc -c)
 if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
   echo "ai-review: diff too large ($diff_bytes bytes > $MAX_DIFF_BYTES) — split the branch into smaller increments" >&2
   exit 1

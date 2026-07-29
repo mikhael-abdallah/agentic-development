@@ -65,6 +65,13 @@ check "oversized diff exits 1" 1 \
 check "skip flag exits 0 without reviewing" 0 \
   env SKIP_AI_REVIEW=1 STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
 
+# Orphan branch: no merge base with main must fail with exit 1, not review.
+git checkout -q --orphan orphan
+git add . && git commit -qm "chore: orphan"
+check "no merge base exits 1" 1 \
+  env STUB_OUTPUT='VERDICT: APPROVE'
+git checkout -q feature
+
 # pre-push hook: reviews pushed branch shas, skips deletions and non-branches.
 hook() {
   local stdin_line=$1
