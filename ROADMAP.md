@@ -48,3 +48,4 @@ Plus: all actions pinned to commit SHAs; Dependabot keeps them fresh.
 
 - `scripts/ai-review.sh` — spawns a headless AI reviewer over the branch diff, writing findings to a gitignored `AI_REVIEW.md`; the coding agent reads it and fixes issues *before* opening the PR. Runs as a `pre-push` hook or invoked explicitly.
 - `AGENTS.md` — the contract for coding agents: small PRs, conventional titles, run the review loop, never touch guardrail configs outside a `ci:`-titled PR.
+
