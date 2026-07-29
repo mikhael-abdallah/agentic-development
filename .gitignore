@@ -1,0 +1,20 @@
+# Private notes (infra, VM, runner details) — never public
+PRIVATE.md
+private/
+
+# Secrets & environment
+.env
+.env.*
+*.pem
+*.key
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Dependencies & build output (grows with the stack)
+node_modules/
+dist/
+coverage/
