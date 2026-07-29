@@ -76,6 +76,27 @@ jobs:
           BIN=$(find "$TOOL" -name zizmor -type f | head -1)
           "$BIN" --min-severity medium .github/workflows/
 
+  shell-lint:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint shell scripts with shellcheck and run gate tests
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+        run: |
+          TOOL="$RUNNER_TOOL_CACHE/shellcheck/$SHELLCHECK_VERSION"
+          if [ ! -x "$TOOL/shellcheck" ]; then
+            mkdir -p "$TOOL"
+            curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+              | tar -xJ -C "$TOOL" --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          fi
+          "$TOOL/shellcheck" scripts/*.sh scripts/tests/*.sh .githooks/*
+          scripts/tests/ai-review-test.sh
+
   dup-check:
     runs-on: [self-hosted, linux, agentic]
     timeout-minutes: 10
