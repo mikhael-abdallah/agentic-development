@@ -9,7 +9,12 @@ cd "$(git rev-parse --show-toplevel)"
 ensure_go
 
 GOLANGCI_VERSION=2.12.2
+# Tarball hash from the release's golangci-lint-${GOLANGCI_VERSION}-checksums.txt;
+# binary hash recorded from that tarball (see fetch_tool in lib.sh).
+GOLANGCI_TARBALL_SHA256=8df580d2670fed8fa984aac0507099af8df275e665215f5c7a2ae3943893a553
+GOLANGCI_BINARY_SHA256=e26335d9bd381a60e5769a13b0ccc7967db5b6fb9c39a896a1f6fd0befe0a661
 bin=$(fetch_tool golangci-lint "$GOLANGCI_VERSION" \
+  "$GOLANGCI_TARBALL_SHA256" "$GOLANGCI_BINARY_SHA256" \
   "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_VERSION}/golangci-lint-${GOLANGCI_VERSION}-linux-amd64.tar.gz" \
   -xz)
 

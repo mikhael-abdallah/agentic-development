@@ -10,8 +10,9 @@ cd "$(git rev-parse --show-toplevel)"
 ensure_node
 ensure_web_deps
 
-DIFF_COVER_VERSION=10.4.1
-FAIL_UNDER="${PATCH_COVERAGE_MIN:-80}"
+# DIFF_COVER_VERSION and PATCH_COVERAGE_MIN come from lib.sh: one definition
+# for both languages, and not overridable from the environment — "ratchet,
+# don't relax" has to be a property of the code, not of who runs it.
 
 # Tolerant fetch, same as size-guard: CI checkouts already have the base.
 git fetch -q origin "${GITHUB_BASE_REF:-main}" 2>/dev/null || true
@@ -40,4 +41,5 @@ done < <(grep -o 'filename="[^"]*"' "$report" | sed 's/^filename="//; s/"$//' | 
 
 # The report's paths are relative to web/, so diff-cover runs here too.
 diff_cover=$(ensure_diff_cover "$DIFF_COVER_VERSION")
-"$diff_cover" "$report" --compare-branch "$base_branch" --fail-under "$FAIL_UNDER"
+"$diff_cover" "$report" --compare-branch "$base_branch" \
+  --fail-under "$PATCH_COVERAGE_MIN"
