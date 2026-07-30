@@ -4,9 +4,10 @@
 # reject anyway never spends reviewer tokens or runner cycles — the PR
 # checks stay on as the backstop.
 #
-# Not mirrored: dependency-review (needs the GitHub API's view of the PR),
-# and the PR title itself (doesn't exist before the PR — commit subjects
-# are checked instead, since one of them usually becomes the title).
+# Every CI guard job appears below (parity-check enforces it). Two are not
+# 1:1 mirrors: dependency-review is a justified pass-through (needs the
+# GitHub API's view of the PR), and pr-title checks commit subjects instead
+# (the PR title doesn't exist before the PR — a subject usually becomes it).
 #
 # Usage:  scripts/local-guards.sh [ref]   (default HEAD; .githooks/pre-push
 #                                          passes each pushed branch sha)
@@ -47,14 +48,19 @@ check_commit_titles() {
   return "$bad"
 }
 
+# Guard names match the CI job names in guardrails.yml: parity-check fails
+# if a CI job has no `run "<job>"` line here — a real mirror when possible,
+# otherwise a pass-through that prints its justification (dependency-review).
 # Cheap and specific first, npx-based last.
-run "commit-titles" check_commit_titles
-run "size-guard" scripts/guards/size-guard.sh "$ref"
+run "parity-check" scripts/guards/parity-check.sh
+run "pr-title" check_commit_titles
+run "pr-guard" scripts/guards/size-guard.sh "$ref"
 run "workflow-lint" scripts/guards/workflow-lint.sh
 run "shell-lint" scripts/guards/shell-lint.sh
 run "secret-scan" scripts/guards/secret-scan.sh
 run "workflow-security" scripts/guards/workflow-security.sh
 run "dup-check" scripts/guards/dup-check.sh
+run "dependency-review" scripts/guards/dependency-review.sh
 
 if [ "${#failed[@]}" -gt 0 ]; then
   echo "local-guards: FAILED — ${failed[*]}" >&2

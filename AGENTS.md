@@ -14,6 +14,7 @@ Rules for AI coding agents working in this repository. `main` is locked; every c
 - Never commit `AI_REVIEW.md` or `PRIVATE.md` (both gitignored — do not "fix" that).
 - Never modify `.github/**` (workflows, guards, dependabot) outside a PR titled `ci: ...` that changes nothing else.
 - Never loosen a guardrail threshold to make a check pass; fix the code instead.
+- Every CI guard job needs a local counterpart wired into `scripts/local-guards.sh`: a real mirror when possible, otherwise a pass-through script that prints why it is CI-only (see `scripts/guards/dependency-review.sh`). `parity-check` fails without it.
 - New dependencies must be justified in the PR body — `dependency-review` and Dependabot watch them.
 
 See [ROADMAP.md](ROADMAP.md) for the gates that apply as the codebase grows.

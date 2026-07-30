@@ -19,6 +19,7 @@ Phased plan for the quality gates that let AI-written code merge without human r
 | `workflow-security` | zizmor | Actions security: template injection, unpinned refs, credential exposure |
 | `dup-check` | jscpd | Copy-paste duplication ≤ 2% |
 | `dependency-review` | dependency-review-action | No known-vulnerable dependencies enter via PRs |
+| `parity-check` | bash | Every CI guard has a local pre-push counterpart (or a justified pass-through) |
 
 Plus: all actions pinned to commit SHAs; Dependabot keeps them fresh.
 
