@@ -9,8 +9,25 @@ on:
     # without it a title could be fixed up only until pr-title passed, then
     # renamed. parity-check enforces that this stays here.
     types: [opened, synchronize, reopened, edited]
-  push:
-    branches: [main]
+
+  # Deliberately NOT `push: branches: [main]`.
+  #
+  # The branch ruleset requires pull requests, requires branches to be up to
+  # date before merging, and has no bypass actors. So every commit on main
+  # arrived through a pull request whose head already contained main — and the
+  # push run re-ran all twenty guards over content the pull-request run had
+  # finished checking a minute earlier. Measured over sixty runs: 140 runner
+  # minutes, none of which could have found anything, all of it queued in front
+  # of the next pull request on a runner that executes one job at a time.
+  #
+  # The one thing a second run can legitimately catch is time-dependent: an
+  # advisory published after a merge makes dep-scan, go-vuln or secret-scan say
+  # something new about code nobody has touched. That deserves a clock, not a
+  # merge hook, so it runs daily instead.
+  schedule:
+    - cron: "17 5 * * *"
+
+  workflow_dispatch:
 
 permissions:
   contents: read
