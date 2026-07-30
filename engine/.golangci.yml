@@ -36,15 +36,52 @@ linters:
       min-complexity: 20
     nestif:
       min-complexity: 4
+    # Architecture boundaries from ARCHITECTURE.md, enforced per directory.
+    # Dependencies point one way: cmd -> api -> sim -> model.
     depguard:
       rules:
-        # The simulation engine is transport-agnostic: HTTP belongs in a
-        # future api layer, which will get its own allow rules.
-        transport-free-engine:
+        # model is the bottom of the stack: it imports nothing else here.
+        engine-model-imports-nothing:
           list-mode: lax
+          files:
+            - "**/engine/internal/model/**"
+          deny:
+            - pkg: github.com/mikhael-abdallah/agentic-development/engine/internal/sim
+              desc: model is the bottom layer; sim depends on model, never the reverse
+            - pkg: github.com/mikhael-abdallah/agentic-development/engine/internal/api
+              desc: model must not know about transport
+        # sim sits above model and below every adapter.
+        engine-sim-imports-only-model:
+          list-mode: lax
+          files:
+            - "**/engine/internal/sim/**"
+          deny:
+            - pkg: github.com/mikhael-abdallah/agentic-development/engine/internal/api
+              desc: the simulation core must not depend on its HTTP adapter
+        # The core is pure: deterministic, no I/O, no transport, no wall clock.
+        # Adapters (api, cmd) do the talking; anything here stays testable.
+        engine-core-is-pure:
+          list-mode: lax
+          files:
+            - "**/engine/internal/model/**"
+            - "**/engine/internal/sim/**"
           deny:
             - pkg: net/http
-              desc: the engine must not know about HTTP; keep it in the api layer
+              desc: the core must not know about HTTP; keep it in the api layer
+            - pkg: os
+              desc: the core must not touch the filesystem, env, or process state
+            - pkg: database/sql
+              desc: the core must not talk to a database
+            - pkg: syscall
+              desc: the core must not make syscalls
+        # Nothing may import a main package's directory.
+        engine-nobody-imports-cmd:
+          list-mode: lax
+          files:
+            - $all
+          deny:
+            - pkg: github.com/mikhael-abdallah/agentic-development/engine/cmd
+              desc: cmd holds binaries; extract shared code into internal instead
     nolintlint:
       require-explanation: true
       require-specific: true
