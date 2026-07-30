@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Guard: small increments — the change set against the base branch stays
 # within the PR size limits.
-# Usage: size-guard.sh [ref]   (default HEAD)
+# Usage: pr-guard.sh [ref]   (default HEAD)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
