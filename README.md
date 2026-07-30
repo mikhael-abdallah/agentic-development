@@ -37,10 +37,14 @@ replace reading the code, a file nothing can read is a hole in the premise.
 
 **Can it be trusted?** — `secret-scan` reads the full history, `dep-scan` and
 `go-vuln` scan for vulnerable *and* malicious packages, `dependency-review`
-blocks new ones, `unicode-check` rejects invisible characters (this repository is
-read by agents, so its text is a delivery surface), and `workflow-security`
-audits the CI itself. Every pinned tool is verified by checksum on **every** run,
-because the runner's tool cache outlives the job.
+blocks new ones and refuses copyleft licences, `unicode-check` rejects invisible
+characters (this repository is read by agents, so its text is a delivery
+surface), and `workflow-security` audits the CI itself. `npm audit signatures`
+verifies every installed package against the registry's signing key — advisory
+scanners only know a package is bad once someone has said so, while a broken
+signature is what fails first when a tarball is replaced after publication.
+Every pinned tool is verified by checksum on **every** run, because the runner's
+tool cache outlives the job.
 
 And two that guard the rest. `parity-check` proves every CI job runs its own
 guard script and has a local pre-push counterpart — job names are what the
