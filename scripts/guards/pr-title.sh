@@ -4,7 +4,7 @@
 # pushed commit subject.
 set -euo pipefail
 
-title="${1:?usage: title-lint.sh <title>}"
+title="${1:?usage: pr-title.sh <title>}"
 if ! printf '%s' "$title" | grep -qE '^(feat|fix|docs|refactor|test|perf|ci|chore|build)(\([a-z0-9./-]+\))?!?: .{1,72}$'; then
   echo "guards: not a Conventional Commit title: '$title'" >&2
   echo "guards: expected e.g. 'feat(engine): add latency model'" >&2

@@ -17,7 +17,7 @@ ensure_web_deps
 # for both languages, and not overridable from the environment — "ratchet,
 # don't relax" has to be a property of the code, not of who runs it.
 
-# Tolerant fetch, same as size-guard: CI checkouts already have the base.
+# Tolerant fetch, same as pr-guard: CI checkouts already have the base.
 git fetch -q origin "${GITHUB_BASE_REF:-main}" 2>/dev/null || true
 base_branch="origin/${GITHUB_BASE_REF:-main}"
 

@@ -5,6 +5,10 @@ name: guardrails
 
 on:
   pull_request:
+    # 'edited' matters: the PR title becomes the squash commit message, and
+    # without it a title could be fixed up only until pr-title passed, then
+    # renamed. parity-check enforces that this stays here.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -112,7 +116,7 @@ jobs:
       - name: Enforce Conventional Commit PR title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: scripts/guards/title-lint.sh "$PR_TITLE"
+        run: scripts/guards/pr-title.sh "$PR_TITLE"
 
   pr-guard:
     if: github.event_name == 'pull_request'
@@ -125,7 +129,7 @@ jobs:
           persist-credentials: false
 
       - name: Enforce PR size limits
-        run: scripts/guards/size-guard.sh
+        run: scripts/guards/pr-guard.sh
 
   dependency-review:
     if: github.event_name == 'pull_request'

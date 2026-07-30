@@ -43,7 +43,7 @@ check_commit_titles() {
   base=$(git merge-base origin/main "$ref")
   while IFS= read -r subject; do
     [ -n "$subject" ] || continue
-    scripts/guards/title-lint.sh "$subject" || bad=1
+    scripts/guards/pr-title.sh "$subject" || bad=1
   done < <(git log --format='%s' "$base".."$ref")
   return "$bad"
 }
@@ -55,7 +55,7 @@ check_commit_titles() {
 run "parity-check" scripts/guards/parity-check.sh
 run "structure-check" scripts/guards/structure-check.sh
 run "pr-title" check_commit_titles
-run "pr-guard" scripts/guards/size-guard.sh "$ref"
+run "pr-guard" scripts/guards/pr-guard.sh "$ref"
 run "workflow-lint" scripts/guards/workflow-lint.sh
 run "shell-lint" scripts/guards/shell-lint.sh
 run "secret-scan" scripts/guards/secret-scan.sh
