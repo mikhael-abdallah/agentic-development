@@ -89,6 +89,12 @@ expect "rejects JavaScript under src/" 1 "web/src/lib/legacy.js"
 expect "rejects a separate test directory" 1 "web/src/lib/__tests__/format.test.ts"
 expect "rejects a test with no module beside it" 1 "web/src/lib/ghost.test.ts"
 
+# The web root is an allowlist, so it needs both words proved: a stray module
+# there is application code that escaped src/, while a test-runner setup file
+# belongs beside the config that names it.
+expect "rejects a stray module at the web root" 1 "web/helpers.ts"
+expect "accepts a test-runner setup file at the web root" 0 "web/vitest.setup.ts"
+
 # The guardrails' own structure
 expect "rejects a shell script shell-lint does not glob" 1 "scripts/ci/deploy.sh"
 expect "rejects a guard nothing invokes" 1 "scripts/guards/orphan.sh"
