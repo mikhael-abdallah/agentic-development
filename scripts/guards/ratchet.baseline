@@ -30,9 +30,10 @@ golangci.nestif.min-complexity 4
 golangci.revive.argument-limit 4
 golangci.revive.file-length-limit 600
 golangci.staticcheck.exclusions 4
-guards.ci-jobs 19
-guards.scripts 22
-guards.test-suites 8
+guards.ci-jobs 20
+guards.scripts 23
+guards.test-suites 9
+hygiene-check.max-bytes 262144
 pr-guard.max-changed-files 30
 pr-guard.max-changed-lines 1000
 suppress.eslint-disable 0
