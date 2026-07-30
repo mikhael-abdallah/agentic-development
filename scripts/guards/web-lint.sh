@@ -28,3 +28,15 @@ npm run -s knip
 npx --yes lockfile-lint@$LOCKFILE_LINT_VERSION \
   --path package-lock.json --type npm \
   --allowed-hosts npm --validate-https --validate-integrity --validate-package-names
+
+# lockfile-lint reads the lockfile as text; this checks what the registry
+# actually served. Every installed package is verified against npm's signing
+# key, and the ones whose publisher built them in CI carry a Sigstore
+# provenance attestation binding the tarball to a source commit and a workflow.
+#
+# It answers a question nothing else here asks. dep-scan and dependency-review
+# both work from advisories — they know a package is bad only once somebody has
+# said so. A signature says the bytes are the ones the registry published,
+# which is what fails first when a tarball is replaced after publication or an
+# account is hijacked, and long before an advisory exists.
+npm audit signatures

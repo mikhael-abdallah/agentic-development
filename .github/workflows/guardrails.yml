@@ -200,6 +200,30 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
+          # A development dependency is not a lesser category here. ESLint
+          # plugins, the test runner and the build toolchain all execute on the
+          # self-hosted runner, with the checkout, on every pull request. The
+          # default scope would have watched only what ships.
+          fail-on-scopes: runtime, development
+          # Strong and network copyleft, refused at the door rather than
+          # discovered later. This assumes the project stays permissively
+          # licensed: no LICENSE has been chosen yet, and if one day it is
+          # GPL-3.0 then this is the line to revisit, not a bug to work around.
+          deny-licenses: >-
+            AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later,
+            GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later,
+            SSPL-1.0, BUSL-1.1
+          # Advisory, not blocking: a low score is a statement about the
+          # project behind a package — unmaintained, unpinned, no review — not
+          # about a known bug in it. Worth seeing when a dependency is added,
+          # not worth failing a merge over.
+          warn-on-openssf-scorecard-level: 3
+          # The same suppression osv-scanner.toml carries, with the reasoning
+          # and the expiry date. Two scanners see this advisory, so silencing
+          # it in one place only would just move which check goes red.
+          # ratchet-check counts the entries here so the list cannot grow
+          # quietly.
+          allow-ghsas: GHSA-mh99-v99m-4gvg
 
   web-lint:
     runs-on: [self-hosted, linux, agentic]

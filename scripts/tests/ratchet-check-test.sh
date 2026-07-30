@@ -158,6 +158,7 @@ pr-guard.max-changed-files 30
 pr-guard.max-changed-lines 1000
 suppress.eslint-disable 0
 suppress.nolint 0
+suppress.allow-ghsas 0
 suppress.osv-ignored 1
 suppress.shellcheck-disable 0
 suppress.test-skip 0

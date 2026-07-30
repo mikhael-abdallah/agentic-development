@@ -162,6 +162,7 @@ metric suppress.ts-expect-error "$(occurrences '@ts-(expect-error|ignore)' 'web/
 metric suppress.shellcheck-disable "$(occurrences 'shellcheck[[:space:]]disable' 'scripts' '.githooks')"
 metric suppress.test-skip "$(occurrences '(\.|\b)(skip|only)\(|t\.Skip' 'engine' 'web/src')"
 metric suppress.osv-ignored "$(lines_matching osv-scanner.toml '^\[\[IgnoredVulns\]\]')"
+metric suppress.allow-ghsas "$(occurrences 'GHSA-[0-9a-zA-Z-]+' '.github/workflows/guardrails.yml')"
 
 # --- the gates themselves ----------------------------------------------------
 
@@ -220,6 +221,7 @@ declare -A LOOSER_WHEN=(
   [suppress.shellcheck-disable]=higher
   [suppress.test-skip]=higher
   [suppress.osv-ignored]=higher
+  [suppress.allow-ghsas]=higher
   [guards.scripts]=lower
   [guards.test-suites]=lower
   [guards.ci-jobs]=lower
