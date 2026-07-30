@@ -31,6 +31,9 @@ enforced by the linter itself.
 [ARCHITECTURE.md](ARCHITECTURE.md): package and feature-slice allowlists, routes
 only in `app/`, tests beside the modules they test. `depguard` and ESLint enforce
 the import direction, so the boundaries are checks rather than conventions.
+`hygiene-check` answers the neighbouring question of what a file may *be*: no
+binaries, nothing too large to read, no conflict markers, no CRLF. If checks
+replace reading the code, a file nothing can read is a hole in the premise.
 
 **Can it be trusted?** — `secret-scan` reads the full history, `dep-scan` and
 `go-vuln` scan for vulnerable *and* malicious packages, `dependency-review`

@@ -104,6 +104,9 @@ cat > scripts/guards/pr-guard.sh <<'SH'
 MAX_CHANGED_LINES="${MAX_CHANGED_LINES:-1000}"
 MAX_CHANGED_FILES="${MAX_CHANGED_FILES:-30}"
 SH
+cat > scripts/guards/hygiene-check.sh <<'SH'
+MAX_BYTES="${MAX_FILE_BYTES:-262144}"
+SH
 printf 'npx --yes jscpd@5.0.14 --threshold 2 --min-tokens 50 .\n' > scripts/guards/dup-check.sh
 printf 'const BUDGET_BYTES = 250_000;\n' > scripts/guards/bundle-budget.mjs
 printf '[[IgnoredVulns]]\nid = "GHSA-test"\n' > osv-scanner.toml
@@ -148,7 +151,8 @@ golangci.revive.argument-limit 4
 golangci.revive.file-length-limit 600
 golangci.staticcheck.exclusions 2
 guards.ci-jobs 2
-guards.scripts 4
+guards.scripts 5
+hygiene-check.max-bytes 262144
 guards.test-suites 1
 pr-guard.max-changed-files 30
 pr-guard.max-changed-lines 1000

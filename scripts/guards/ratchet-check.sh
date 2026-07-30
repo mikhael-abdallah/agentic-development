@@ -137,6 +137,7 @@ metric eslint.restricted-import-patterns "$(grep -oE 'group: \[' "$eslint" | wc 
 metric coverage.patch-min "$(first_num scripts/guards/lib.sh 'PATCH_COVERAGE_MIN' 'PATCH_COVERAGE_MIN')"
 metric pr-guard.max-changed-files "$(first_num scripts/guards/pr-guard.sh 'MAX_CHANGED_FILES' 'MAX_CHANGED_FILES')"
 metric pr-guard.max-changed-lines "$(first_num scripts/guards/pr-guard.sh 'MAX_CHANGED_LINES' 'MAX_CHANGED_LINES')"
+metric hygiene-check.max-bytes "$(first_num scripts/guards/hygiene-check.sh 'MAX_FILE_BYTES' 'MAX_FILE_BYTES')"
 metric dup-check.threshold "$(flag_num scripts/guards/dup-check.sh -- --threshold)"
 metric dup-check.min-tokens "$(flag_num scripts/guards/dup-check.sh -- --min-tokens)"
 metric bundle-budget.bytes "$(
@@ -210,6 +211,7 @@ declare -A LOOSER_WHEN=(
   [pr-guard.max-changed-files]=higher
   [pr-guard.max-changed-lines]=higher
   [dup-check.threshold]=higher
+  [hygiene-check.max-bytes]=higher
   [dup-check.min-tokens]=higher
   [bundle-budget.bytes]=higher
   [suppress.nolint]=higher
