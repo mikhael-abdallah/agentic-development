@@ -9,6 +9,11 @@
 # Run from anywhere inside the real repo:  scripts/tests/lib-test.sh
 set -euo pipefail
 
+# The scope cases below assume the throwaway repo's own base branch. CI sets
+# GITHUB_BASE_REF for pull requests, so clear it rather than let the ambient
+# environment decide what these assertions compare against.
+unset GITHUB_BASE_REF
+
 repo_root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
