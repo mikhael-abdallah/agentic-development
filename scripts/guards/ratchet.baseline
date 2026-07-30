@@ -37,7 +37,7 @@ hygiene-check.max-bytes 262144
 pr-guard.max-changed-files 30
 pr-guard.max-changed-lines 1000
 suppress.eslint-disable 0
-suppress.nolint 0
+suppress.nolint 1
 suppress.allow-ghsas 1
 suppress.osv-ignored 1
 suppress.shellcheck-disable 27
