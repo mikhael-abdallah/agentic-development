@@ -21,6 +21,7 @@ var (
 	ErrClientInbound  = errors.New("the client cannot receive traffic")
 	ErrUnreachable    = errors.New("component cannot be reached from the client")
 	ErrCycle          = errors.New("requests would flow in a circle")
+	ErrWorkload       = errors.New("invalid workload")
 )
 
 // Validate reports whether this design can be simulated.
