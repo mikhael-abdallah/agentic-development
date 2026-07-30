@@ -35,14 +35,14 @@
     "@vitejs/plugin-react": "6.0.4",
     "@vitest/coverage-v8": "4.1.10",
     "@vitest/eslint-plugin": "1.6.24",
-    "eslint": "9.39.5",
+    "eslint": "10.7.0",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-security": "4.0.1",
     "eslint-plugin-sonarjs": "4.2.0",
     "jsdom": "30.0.1",
     "knip": "6.29.0",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"
   }
