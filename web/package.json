@@ -20,6 +20,9 @@
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
+  "overrides": {
+    "postcss": "8.5.25"
+  },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
     "@next/eslint-plugin-next": "16.2.12",
