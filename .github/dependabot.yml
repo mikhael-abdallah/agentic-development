@@ -1,9 +1,20 @@
 version: 2
+
+# Cooldown delays version bumps past the window in which a malicious release
+# is typically discovered and yanked — the cheapest defence there is against
+# a compromised maintainer account, which no advisory database can warn about
+# in advance because there is no advisory yet.
+#
+# Security updates are exempt from cooldown by design: a known-exploited
+# vulnerability should not wait. npm gets the longest window because it has
+# both the largest transitive surface and the shortest attack half-life.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:
@@ -12,6 +23,8 @@ updates:
     directory: /engine
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       gomod:
         patterns:
@@ -20,6 +33,8 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     groups:
       npm:
         patterns:

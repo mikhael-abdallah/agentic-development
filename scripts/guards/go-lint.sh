@@ -22,5 +22,11 @@ bin=$(fetch_tool golangci-lint "$GOLANGCI_VERSION" \
   -xz)
 
 cd engine
+# go.mod and go.sum must already describe exactly what the code imports. An
+# import of a module that was never required — the shape a hallucinated
+# dependency takes — leaves the two out of sync, and `go build` would happily
+# fix it up in place rather than complain.
+go mod tidy -diff
+
 "$bin" config verify
 "$bin" run ./...
