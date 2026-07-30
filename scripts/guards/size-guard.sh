@@ -14,9 +14,20 @@ base_branch="origin/${GITHUB_BASE_REF:-main}"
 # fetch-depth 0, and offline local runs can still use the last-known ref).
 git fetch -q origin "${GITHUB_BASE_REF:-main}" 2>/dev/null || true
 
+# Machine-generated lockfiles don't count against the budget — a one-line
+# dependency change can regenerate thousands of lock lines, and the limit
+# is about reviewable increments, not generated noise. Everything else
+# (including go.sum, which stays small per change) still counts.
+exclude=(
+  ':(glob,exclude)**/package-lock.json'
+  ':(glob,exclude)**/npm-shrinkwrap.json'
+  ':(glob,exclude)**/yarn.lock'
+  ':(glob,exclude)**/pnpm-lock.yaml'
+)
+
 base=$(git merge-base "$base_branch" "$ref")
-files=$(git diff --name-only "$base" "$ref" | wc -l)
-lines=$(git diff --numstat "$base" "$ref" | awk '{ added += $1; deleted += $2 } END { print added + deleted }')
+files=$(git diff --name-only "$base" "$ref" -- . "${exclude[@]}" | wc -l)
+lines=$(git diff --numstat "$base" "$ref" -- . "${exclude[@]}" | awk '{ added += $1; deleted += $2 } END { print added + deleted }')
 echo "Changed files: $files (max $MAX_CHANGED_FILES)"
 echo "Changed lines: $lines (max $MAX_CHANGED_LINES)"
 if [ "$files" -gt "$MAX_CHANGED_FILES" ] || [ "$lines" -gt "$MAX_CHANGED_LINES" ]; then
