@@ -124,3 +124,37 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
+
+  go-lint:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint the Go engine with golangci-lint
+        run: scripts/guards/go-lint.sh
+
+  go-test:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Go tests (race + shuffle) and patch-coverage gate
+        run: scripts/guards/go-test.sh
+
+  go-vuln:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan Go dependencies with govulncheck
+        run: scripts/guards/go-vuln.sh
