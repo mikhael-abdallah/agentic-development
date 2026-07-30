@@ -37,21 +37,10 @@ while IFS= read -r covered; do
   fi
 done < <(grep -o 'filename="[^"]*"' "$tmp/coverage.xml" | sed 's/^filename="//; s/"$//' | sort -u)
 
-# diff-cover is Python-only, so it lives in a cached venv, versioned like
-# every other pinned tool. --without-pip + get-pip.py works on machines
-# that lack the python3-venv apt package (ensurepip), so CI and local
-# machines share one code path with no system packages beyond python3.
-venv="$TOOL_CACHE/diff-cover/$DIFF_COVER_VERSION"
-if [ ! -x "$venv/bin/diff-cover" ]; then
-  echo "guards: installing diff-cover $DIFF_COVER_VERSION into $venv (first run)" >&2
-  rm -rf "$venv" # a half-built venv from an earlier failure must not linger
-  python3 -m venv --without-pip "$venv"
-  curl -sSfL https://bootstrap.pypa.io/get-pip.py | "$venv/bin/python3" - -q
-  "$venv/bin/pip" -q install "diff_cover==$DIFF_COVER_VERSION"
-fi
+diff_cover=$(ensure_diff_cover "$DIFF_COVER_VERSION")
 
 # gocover-cobertura writes module-relative paths; diff-cover diffs from the
 # repo root, so it runs inside engine/ where the two views line up.
 cd engine
-"$venv/bin/diff-cover" "$tmp/coverage.xml" \
+"$diff_cover" "$tmp/coverage.xml" \
   --compare-branch "$base_branch" --fail-under "$FAIL_UNDER"
