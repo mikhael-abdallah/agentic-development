@@ -39,13 +39,21 @@ These guards also run **locally on pre-push** (`scripts/local-guards.sh`, shared
 - **Tests** — `go test -race -shuffle=on`; coverage → `gocover-cobertura` → `diff-cover`, the same patch-coverage mechanism phase 3 will reuse for TypeScript.
 - Deliberately **not** included: `nilaway` (see phase 4) — no versioned releases and a known false-positive rate make it wrong for a required check under "ratchet, don't relax".
 
-## Phase 3 — TypeScript / Next.js gates (when frontend lands)
+## Phase 3 — TypeScript / Next.js gates ✅
+
+| Check | Tool | Enforces |
+|---|---|---|
+| `web-lint` | tsc + ESLint + knip | Strict types, clean-code limits, a11y/hooks/security lint, no dead code |
+| `web-test` | vitest + diff-cover | Component and unit tests; **patch coverage ≥ 80%** on changed lines |
+| `web-build` | next build + bundle budget | The app builds; each route's first-load JS ≤ **250 kB gzipped** |
 
 - **`tsc --noEmit`** with `strict` + `noUncheckedIndexedAccess`.
-- **ESLint** (typescript-eslint, type-checked): `complexity` ≤ 12, `max-lines-per-function` ≤ 60, `max-params` 4, `max-lines` ~400, `max-depth` 4, sonarjs cognitive complexity, `no-explicit-any` as error.
-- **`knip`** — dead code, unused exports and dependencies.
-- **Vitest** coverage → same `diff-cover` patch gate (≥ 80% on changed lines).
-- **`next build`** as a required check; module boundaries via `dependency-cruiser`.
+- **ESLint 9** (`web/eslint.config.mjs`): typescript-eslint strict + stylistic type-checked, Next core-web-vitals, react-hooks (`exhaustive-deps`), jsx-a11y, sonarjs, security, eslint-comments. Limits: `complexity` ≤ 12, `max-depth` ≤ 4, `max-params` 4, `max-lines` ≤ 400, `max-lines-per-function` ≤ 60 — raised to **150 for `.tsx`**: JSX is declarative markup that outgrows 60 lines without gaining branching, so cognitive complexity (≤ 15) and `max-depth` stay the real guards there. Tuned before enforcement began, not relaxed after — the ratchet holds. Every suppression needs a written reason (`eslint-comments/require-description`, mirroring Go's `nolintlint`); test files exempt from length/complexity rules, like Go.
+- **`knip`** — dead exports and unused dependencies (AI leaves corpses).
+- **Vitest** (jsdom + testing-library) → Cobertura → the same `diff-cover` ≥ 80% patch gate as Go, with the same report-path assertion against vacuous passes.
+- **`next build`** + first-load budget: gzipped JS per prerendered route, measured from the route's actual script tags (survives Next's manifest reshuffles). Budget 250 kB against a measured 181 kB framework floor — complexity limits don't stop a 2 MB chart import; this does. Ratchets down, never up.
+- **Toolchain**: Node pinned by SHA-256 into the same tool cache as the Go binaries (`scripts/guards/web-env.sh`); vulnerable transitive pins (`postcss`, `sharp`) patched via npm `overrides` the day `dependency-review` flagged them.
+- Deferred until real server code lands: module boundaries (`dependency-cruiser`) and `server-only` poisoning of server modules — the rules are specified in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Phase 4 — Deeper correctness (scheduled, not per-PR)
 

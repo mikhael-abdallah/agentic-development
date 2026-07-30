@@ -18,7 +18,7 @@ Stack-specific checks (lint, tests, coverage) are added to the same pipeline as 
 
 ## Roadmap
 
-First project: an interactive **system design simulator** — drag components onto a canvas (databases, caches, queues), set a target load, and watch simulated latency/throughput expose the bottlenecks.
+First project: an interactive **system design simulator** — drag components onto a canvas (databases, caches, queues), set a target load, and watch simulated latency/throughput expose the bottlenecks. Structure and boundaries are specified up front in [ARCHITECTURE.md](ARCHITECTURE.md), so both the agents and the guardrails know where every file belongs.
 
 ## Status
 
