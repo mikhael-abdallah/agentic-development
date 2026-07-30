@@ -4,7 +4,7 @@ Phased plan for the quality gates that let AI-written code merge without human r
 
 **Principles**
 
-- **Ratchet, don't relax** — thresholds start moderate and only tighten. Lint suppressions (`//nolint`, `eslint-disable`) require a written justification, enforced by the linter itself.
+- **Ratchet, don't relax** — thresholds start moderate and only tighten. Lint suppressions (`//nolint`, `eslint-disable`) require a written justification, enforced by the linter itself; `ratchet-check` enforces the principle itself, holding every limit, enabled-linter count and suppression total against a committed baseline so that lowering a bar is a visible line in a diff rather than a config tweak nobody sees.
 - **Same gate, both languages** — patch coverage uses `diff-cover` over Cobertura XML from both Go and TypeScript.
 - **Per-PR gates are fast** — expensive analysis (mutation testing, CodeQL) runs on a schedule and reports via issues, keeping the 2-core runner responsive.
 

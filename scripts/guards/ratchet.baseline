@@ -1,0 +1,43 @@
+# Ratchet baseline — the quality settings as they stand, one per line.
+#
+# scripts/guards/ratchet-check.sh measures each of these from the tree and
+# fails on any difference, in either direction. A line changes here only when
+# a limit is deliberately moved, and the pull request that moves it has to say
+# why. That is the whole mechanism: relaxing a gate stops being an invisible
+# config tweak and becomes a reviewable line that reads "this bar was lowered".
+bundle-budget.bytes 250000
+coverage.patch-min 80
+dup-check.min-tokens 50
+dup-check.threshold 2
+eslint.complexity 12
+eslint.max-depth 4
+eslint.max-lines 400
+eslint.max-lines-per-function 150
+eslint.max-nested-callbacks 3
+eslint.max-params 4
+eslint.plugins 8
+eslint.restricted-import-patterns 5
+eslint.rules-disabled 4
+eslint.sonarjs-cognitive-complexity 15
+golangci.cyclop.max-complexity 12
+golangci.depguard.rules 4
+golangci.exclusions 1
+golangci.funlen.lines 80
+golangci.funlen.statements 50
+golangci.gocognit.min-complexity 20
+golangci.linters.enabled 22
+golangci.nestif.min-complexity 4
+golangci.revive.argument-limit 4
+golangci.revive.file-length-limit 600
+golangci.staticcheck.exclusions 4
+guards.ci-jobs 19
+guards.scripts 22
+guards.test-suites 8
+pr-guard.max-changed-files 30
+pr-guard.max-changed-lines 1000
+suppress.eslint-disable 0
+suppress.nolint 0
+suppress.osv-ignored 1
+suppress.shellcheck-disable 26
+suppress.test-skip 0
+suppress.ts-expect-error 0

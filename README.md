@@ -39,9 +39,15 @@ read by agents, so its text is a delivery surface), and `workflow-security`
 audits the CI itself. Every pinned tool is verified by checksum on **every** run,
 because the runner's tool cache outlives the job.
 
-And one that guards the rest: `parity-check` proves every CI job runs its own
-guard script and has a local pre-push counterpart. Job names are what the ruleset
-requires, so without it a job could keep its name, lose its body, and pass.
+And two that guard the rest. `parity-check` proves every CI job runs its own
+guard script and has a local pre-push counterpart — job names are what the
+ruleset requires, so without it a job could keep its name, lose its body, and
+pass. `ratchet-check` proves the guards still demand something: every limit,
+enabled linter and suppression count is recorded in
+[`ratchet.baseline`](scripts/guards/ratchet.baseline), and any movement fails,
+in either direction. Raising `funlen` to 200 or adding an `eslint-disable` is
+the cheapest way to turn a red check green, and it looks exactly like a fix.
+Now it costs a line in the baseline, next to the reason.
 
 Every guard is a script in `scripts/guards/`, run identically by CI and by the
 pre-push hook, so a doomed push never reaches the runner. The guards have their
