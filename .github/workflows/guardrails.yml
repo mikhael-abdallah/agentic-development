@@ -142,6 +142,17 @@ jobs:
       - name: Enforce PR size limits
         run: scripts/guards/pr-guard.sh
 
+  dep-scan:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan both lockfiles with osv-scanner
+        run: scripts/guards/dep-scan.sh
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, agentic]
