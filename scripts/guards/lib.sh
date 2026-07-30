@@ -80,6 +80,46 @@ fetch_tool() {
   printf '%s\n' "$bin"
 }
 
+# Scopes for guard_applies. A language gate cares about its own tree, plus
+# the guard plumbing and CI wiring that decide how it runs — change either of
+# those and every gate re-runs.
+# shellcheck disable=SC2034 # read by the guards that source this file
+GO_GUARD_SCOPE='^(engine/|scripts/|\.github/)'
+# shellcheck disable=SC2034 # read by the guards that source this file
+WEB_GUARD_SCOPE='^(web/|scripts/|\.github/)'
+
+# guard_applies NAME SCOPE_REGEX — 0 when this guard has work to do, 1 (with
+# an explanatory line) when nothing in its scope changed. A front-end-only PR
+# should not pay for the Go toolchain download, and vice versa.
+#
+# The skip lives here rather than in a workflow `paths:` filter or a job
+# `if:` because a required status check that never *reports* leaves auto-merge
+# waiting forever. The job still runs and still reports green — it just exits
+# before doing any expensive work.
+#
+# Fail-open by design: if the base ref or the merge base cannot be resolved,
+# or the diff comes back empty (a push to main, say), the guard RUNS. Skipping
+# has to be a positive decision about a diff we could actually read, never a
+# side effect of a git view we could not.
+guard_applies() {
+  local name=$1 scope=$2 base merge_base changed
+  base="origin/${GITHUB_BASE_REF:-main}"
+  git rev-parse --verify -q "$base" >/dev/null || return 0
+  merge_base=$(git merge-base "$base" HEAD 2>/dev/null) || return 0
+  # Working tree and untracked files count too, so a local pre-push run sees
+  # the same scope the eventual PR will.
+  changed=$({
+    git diff --name-only "$merge_base"
+    git ls-files --others --exclude-standard
+  } 2>/dev/null) || return 0
+  [ -n "$changed" ] || return 0
+  if grep -qE "$scope" <<<"$changed"; then
+    return 0
+  fi
+  echo "guards: $name skipped — no changed file matches $scope" >&2
+  return 1
+}
+
 # diff-cover is Python-only, so it lives in a cached venv, versioned like
 # every other pinned tool. --without-pip + get-pip.py works on machines
 # that lack the python3-venv apt package (ensurepip), so CI and local
