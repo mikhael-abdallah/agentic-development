@@ -6,6 +6,52 @@ import security from "eslint-plugin-security";
 import sonarjs from "eslint-plugin-sonarjs";
 import tseslint from "typescript-eslint";
 
+// Architecture boundaries from ARCHITECTURE.md — the web counterpart to the
+// Go engine's depguard rules. Dependencies point one way:
+// app -> features -> components|lib.
+//
+// ESLint rule options *replace* rather than merge across config blocks, so a
+// per-directory block must restate the shared patterns or it would silently
+// switch them off exactly where an extra rule was being added. BOUNDARIES is
+// spread into every block for that reason.
+const BOUNDARIES = [
+  {
+    group: ["@/app", "@/app/*", "**/app/*"],
+    message: "app/ holds routes; nothing may import from it.",
+  },
+  {
+    // Deep relative traversal would slip past the @/ groups above, leaving the
+    // boundary unchecked. Anything leaving its own directory uses the alias.
+    group: ["../../*"],
+    message: "Use the @/ alias for imports that leave the current directory.",
+  },
+  {
+    group: ["**/*.test", "**/*.test.*"],
+    message:
+      "Test files are exempt from the length and complexity limits and from coverage — importing one moves product logic outside both.",
+  },
+];
+
+const restrictImports = (...patterns) => ({
+  "no-restricted-imports": ["error", { patterns: [...BOUNDARIES, ...patterns] }],
+});
+
+// The feature slices from ARCHITECTURE.md. structure-check.sh enforces that
+// src/features/ holds exactly these directories; the rule below stops them
+// importing each other, which is what makes them slices rather than folders.
+// Shared code moves down into lib/ or components/ instead.
+const FEATURES = ["canvas", "palette", "inspector", "simulation"];
+
+const sliceIsolation = (slice) => ({
+  files: [`src/features/${slice}/**`],
+  rules: restrictImports(
+    ...FEATURES.filter((other) => other !== slice).map((other) => ({
+      group: [`@/features/${other}`, `@/features/${other}/*`, `../${other}`, `../${other}/*`],
+      message: `${slice} must not reach into the ${other} slice — move shared code into lib/ or components/.`,
+    })),
+  ),
+});
+
 export default tseslint.config(
   { ignores: [".next/**", "coverage/**", "node_modules/**", "next-env.d.ts", "*.config.*"] },
 
@@ -36,8 +82,21 @@ export default tseslint.config(
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       // Every suppression needs a written reason — mirrors Go's nolintlint.
       "@eslint-community/eslint-comments/require-description": "error",
+      ...restrictImports(),
     },
   },
+
+  {
+    // components/ and lib/ are shared and sit below features/: they cannot
+    // reach back up, or the arrow stops pointing one way.
+    files: ["src/components/**", "src/lib/**"],
+    rules: restrictImports({
+      group: ["@/features", "@/features/*"],
+      message: "components/ and lib/ are shared and must not depend on a feature.",
+    }),
+  },
+
+  ...FEATURES.map(sliceIsolation),
 
   {
     // JSX is hierarchical markup: a readable component outgrows 60 lines
