@@ -57,11 +57,39 @@ These guards also run **locally on pre-push** (`scripts/local-guards.sh`, shared
 
 ## Phase 4 — Deeper correctness (scheduled, not per-PR)
 
-- **Mutation testing** (Stryker for TS, gremlins for Go) — weekly; surviving mutants become issues. Proves the coverage gate measures real assertions, not test theater.
-- **Semgrep** with custom rules for AI failure modes: swallowed errors, `panic()` in library code, TODOs without an issue link.
-- **nilaway** (Uber) — nil-panic static analysis over the Go engine; scheduled and advisory rather than a required check, because it ships without versioned releases and with a documented false-positive rate.
-- **CodeQL** on GitHub-hosted runners (free for public repos).
+Every gate above checks *how* code is written. None of them check that it does
+what was asked — coverage, lint and type checks are all satisfied by code that
+confidently implements the wrong thing. This phase is about narrowing that,
+and it runs on a schedule because it is too slow for a two-core runner to do
+per PR.
+
+- **Property-based tests** (`pgregory.net/rapid` for Go, `fast-check` for TS)
+  over the simulation core. Properties are written against the spec rather
+  than the implementation, so they do not inherit the bug the implementation
+  has — the closest thing to a correctness oracle that can be automated.
+- **Mutation testing** — weekly; surviving mutants become issues. It proves the
+  coverage gate measures real assertions rather than test theater. StrykerJS
+  first: it supports incremental runs and has a usable baseline. Go's options
+  are weaker — `gremlins` has no diff mode, no baseline file and no coverage
+  filtering, so it needs real integration work and stays scoped to changed
+  packages.
+- **Semgrep** with rules for this repository's own escaped bugs. Worth being
+  clear about why they have to be written here: the off-the-shelf "AI" rule
+  packs target code that *calls* an LLM — hardcoded provider keys, prompt
+  injection sinks — not code an LLM *wrote*. Nothing off the shelf covers the
+  latter. Seed it empirically: every time a bug reaches `main`, add the rule.
+- **CodeQL** on GitHub-hosted runners (free for public repos, and it keeps the
+  self-hosted box free). Overlaps `gosec` and `eslint-plugin-security` on
+  single-function patterns, but adds cross-file taint tracking that neither
+  has.
+- **nilaway** (Uber) — interprocedural nil-flow analysis, which golangci-lint
+  cannot do. Advisory rather than required: it ships without versioned releases
+  and with a documented false-positive rate, and *ratchet, don't relax* means a
+  required check has to be one we will never be tempted to switch off.
 - **Playwright** smoke E2E once the app has a UI.
+- **Tool freshness.** Dependabot covers Actions, Go modules and npm, but not the
+  dozen hand-pinned tool versions in `scripts/guards/`. A stale `gitleaks` or
+  `govulncheck` degrades coverage with no signal at all.
 
 ## Phase 5 — AI review loop ✅
 
@@ -69,3 +97,59 @@ These guards also run **locally on pre-push** (`scripts/local-guards.sh`, shared
 - [`AGENTS.md`](AGENTS.md) — the contract for coding agents: small PRs, conventional titles, run the review loop, never touch guardrail configs outside a `ci:`-titled PR.
 
 *(Implemented out of order — it needs no product code, unlike phases 2–4.)*
+
+## Phase 6 — Guarding the guards ✅
+
+Phases 1–3 assumed the pipeline itself was trustworthy. An audit of the
+guardrails against their own threat model — AI writes the code, no human reads
+it, the runner is long-lived and public — found that assumption was doing a lot
+of unearned work. This phase closes what it found.
+
+| Check | Tool | Enforces |
+|---|---|---|
+| `structure-check` | bash | The tree matches [ARCHITECTURE.md](ARCHITECTURE.md): package and slice allowlists, route files, colocated tests, no unlinted shell script, no orphan guard |
+| `unicode-check` | bash | No invisible or direction-changing Unicode in tracked text |
+| `dep-scan` | osv-scanner | Malicious (`MAL-`) and vulnerable packages across **both** lockfiles, re-checked every run |
+
+And, inside the checks that already existed:
+
+- **`parity-check` proves each job runs its own guard.** It compared job *names*
+  before. Job names are what the ruleset requires, so a change that kept the name
+  and replaced the body — `run: true`, a different script — passed every required
+  check while enforcing nothing, including the meta-guard meant to notice exactly
+  that. The naming convention is now load-bearing; `dependency-review` is the one
+  documented exception.
+- **Pinned tool binaries are verified by checksum on every run,** not only on
+  download. CI runs PR code on a long-lived runner whose tool cache outlives the
+  job, so a single malicious run could otherwise replace `gitleaks` or `zizmor`
+  with a binary that exits 0 and silently disarm those gates for every later PR.
+- **`ignore-scripts=true`** — an install script in any transitive npm dependency
+  is arbitrary code execution on that same runner, and is how most npm
+  supply-chain attacks are actually delivered.
+- **`lockfile-lint`** — the lockfile is machine-generated and excluded from both
+  the size guard and the AI reviewer's diff, making it the least-observed file in
+  the repository. Every entry must resolve to the npm registry over https with an
+  integrity hash.
+- **Dependabot cooldown** (7 days, 14 for npm) — the window in which a malicious
+  release is typically found and yanked. Security updates stay exempt.
+- **`go mod tidy -diff`** — an import of a module that was never required is the
+  shape a hallucinated dependency takes, and `go build` would fix it up in place
+  rather than complain.
+- **Import boundaries in ESLint**, mirroring the engine's `depguard` rules, plus
+  a ban on importing any `*.test.*` file: test files are exempt from the length,
+  complexity *and* coverage gates, so importing one moves product logic outside
+  all three.
+- **Test-quality lint** — `vitest/expect-expect` and friends, `thelper`,
+  `tparallel`, `usetesting`, `nilerr`, and a ban on `t.Skip`. Coverage measures
+  which lines ran, not whether anything was checked; a test that executes code and
+  asserts nothing is the most common way an AI-written suite reports health it has
+  not earned.
+
+**Scoped execution.** Language gates now exit early when no changed file is in
+their scope, so a front-end PR does not pay for the Go toolchain and vice versa.
+The skip lives inside the guard rather than in a workflow `paths:` filter,
+because a required check that never *reports* leaves auto-merge waiting forever.
+
+**Tests for the guards themselves.** Every guard added here has a suite with a
+negative case per rule, because they share one failure mode: a guard that
+silently matches nothing looks exactly like a guard that passes.

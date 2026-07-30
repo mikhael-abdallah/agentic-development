@@ -14,9 +14,16 @@ Rules for AI coding agents working in this repository. `main` is locked; every c
 
 - Never commit `AI_REVIEW.md` or `PRIVATE.md` (both gitignored — do not "fix" that).
 - Never modify `.github/**` (workflows, guards, dependabot) outside a PR titled `ci: ...` that changes nothing else.
-- Never loosen a guardrail threshold to make a check pass; fix the code instead.
-- Every CI guard job needs a local counterpart wired into `scripts/local-guards.sh`: a real mirror when possible, otherwise a pass-through script that prints why it is CI-only (see `scripts/guards/dependency-review.sh`). `parity-check` fails without it.
+- Never loosen a guardrail threshold to make a check pass; fix the code instead. Suppressions carry a written reason — `nolintlint` and `eslint-comments/require-description` enforce that, and an entry in `osv-scanner.toml` needs a reason *and* an expiry date so an ignore cannot quietly become permanent.
+- Never dodge a gate by moving code: test files are exempt from the length, complexity and coverage limits, so nothing may import a `*.test.*` file, and `t.Skip` / `it.skip` are banned outright — a skipped test reports as passing.
+- **A guard script is named after the job that runs it.** `scripts/guards/<job>.sh`, a matching job in `guardrails.yml`, and a `run "<job>"` line in `scripts/local-guards.sh` — a real mirror when possible, otherwise a pass-through that prints why it is CI-only (see `scripts/guards/dependency-review.sh`). `parity-check` enforces all three, because a job that keeps its name and loses its body still satisfies the ruleset. Add the check to the branch ruleset only *after* the PR merges, or it blocks itself.
+- **Follow the layout in [ARCHITECTURE.md](ARCHITECTURE.md); `structure-check` enforces it.** Adding a Go package, a web feature slice, or a file at the repository root means editing the allowlist in `scripts/guards/structure-check.sh` and ARCHITECTURE.md **in the same PR** — the allowlists are narrow so that the decision shows up in the diff.
+- **Every guard gets a test suite in `scripts/tests/`,** with a case per rule that must fail and a clean input that must pass. A guard whose pattern silently matches nothing behaves exactly like one that passes; only a negative case tells them apart. `shell-lint` runs every suite it finds there.
 - New dependencies must be justified in the PR body — `dependency-review` and Dependabot watch them.
 - Never run npm or node against `web/` from the ambient shell — use `scripts/web-npm.sh <npm-args>` (or `scripts/web-npm.sh exec <cmd>`), which runs the same pinned toolchain as the guards. A lockfile written by a different npm gets rejected by the guards' `npm ci`; `web/.npmrc` sets `engine-strict=true`, so a wrong-toolchain npm fails with `notsup` — that failure is the guard working, not a bug to work around.
 
-See [ROADMAP.md](ROADMAP.md) for the gates that apply as the codebase grows.
+## What the checks are for
+
+There are 18 required checks. They answer four questions — does it work, is it readable, does it still fit the design, can it be trusted — and the fifth guard, `parity-check`, exists to make sure the other seventeen are really running. [README.md](README.md) groups them; [ROADMAP.md](ROADMAP.md) records why each threshold is where it is.
+
+If a gate seems wrong, say so in the PR body and leave it alone. The thresholds were tuned before enforcement began, and *ratchet, don't relax* is the rule that makes the rest of this trustworthy.
