@@ -24,6 +24,11 @@ if [ -z "${GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
 fi
 args=(--min-severity medium)
 if [ -z "${GH_TOKEN:-}" ]; then
+  # Losing the online audits quietly would be the worst outcome: the gate goes
+  # on reporting green while no longer checking whether a pinned action was
+  # force-pushed over or its repository archived. Say so instead.
+  echo "guards: no GitHub token available — running zizmor without its online" \
+    "audits (stale/impostor action refs are NOT checked in this run)" >&2
   args+=(--no-online-audits)
 fi
 "$bin" "${args[@]}" .github/workflows/

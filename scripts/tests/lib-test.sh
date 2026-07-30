@@ -44,6 +44,49 @@ check "verify_sha256 accepts a matching hash" 0 \
 check "verify_sha256 rejects a mismatched hash" 1 \
   verify_sha256 "$work/payload" "${hello_sha//5/6}" payload
 
+# --- assert_coverage_paths ---------------------------------------------------
+#
+# diff-cover matches a coverage report against the diff by path and ignores
+# what it cannot match, so every case below is one where the patch-coverage
+# gate would report success while measuring nothing.
+
+# cobertura FILE... — a minimal report naming the given files.
+cobertura() {
+  local out=$1 f
+  shift
+  printf '<coverage><packages><package><classes>\n' > "$out"
+  for f in "$@"; do
+    printf '<class filename="%s"><lines><line number="1" hits="1"/></lines></class>\n' \
+      "$f" >> "$out"
+  done
+  printf '</classes></package></packages></coverage>\n' >> "$out"
+}
+
+mkdir -p "$work/tree/internal/model"
+echo x > "$work/tree/internal/model/model.go"
+
+cobertura "$work/report.xml" internal/model/model.go
+check "a report whose paths resolve is accepted" 0 \
+  assert_coverage_paths "$work/report.xml" "$work/tree"
+
+# The drift that matters: paths written relative to the module read from one
+# directory up. Every line is unmatched, and unmatched means uncounted.
+check "a report read from the wrong root is rejected" 1 \
+  assert_coverage_paths "$work/report.xml" "$work"
+
+cobertura "$work/stale.xml" internal/model/deleted.go
+check "a report naming a file that no longer exists is rejected" 1 \
+  assert_coverage_paths "$work/stale.xml" "$work/tree"
+
+# An empty report is the purest form of the failure: nothing to match, so
+# nothing uncovered, so the gate passes.
+cobertura "$work/empty.xml"
+check "a report naming no files at all is rejected" 1 \
+  assert_coverage_paths "$work/empty.xml" "$work/tree"
+
+check "a missing report is rejected" 1 \
+  assert_coverage_paths "$work/never-written.xml" "$work/tree"
+
 # --- guard_applies -----------------------------------------------------------
 
 git init -q -b main "$work/upstream"

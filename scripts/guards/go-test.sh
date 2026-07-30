@@ -29,17 +29,8 @@ go -C engine test -race -shuffle=on -coverprofile="$tmp/cover.out" ./...
 go -C engine run "github.com/boumenot/gocover-cobertura@$GOCOVER_COBERTURA_VERSION" \
   < "$tmp/cover.out" > "$tmp/coverage.xml"
 
-# Path drift between the report and diff-cover's git view would not fail
-# this gate — it would silently disable it (no matching lines = vacuous
-# pass). Pin the alignment: every file the report names must exist in the
-# repo at the path diff-cover will resolve it to.
-while IFS= read -r covered; do
-  if [ ! -f "engine/$covered" ]; then
-    echo "guards: coverage report names '$covered' but engine/$covered does not exist —" \
-      "path drift would silently disable the patch-coverage gate" >&2
-    exit 1
-  fi
-done < <(grep -o 'filename="[^"]*"' "$tmp/coverage.xml" | sed 's/^filename="//; s/"$//' | sort -u)
+# gocover-cobertura writes module-relative paths, so they resolve under engine/.
+assert_coverage_paths "$tmp/coverage.xml" engine
 
 diff_cover=$(ensure_diff_cover "$DIFF_COVER_VERSION")
 

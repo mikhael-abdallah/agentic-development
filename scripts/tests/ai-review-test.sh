@@ -16,15 +16,23 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # Upstream with main, plus a clone holding a feature branch with changes.
+#
+# The tooling under test is committed to main *before* the clone, so the
+# feature branch's diff is one small file. An earlier version copied it into
+# the clone instead, which left every byte of scripts/ inside the reviewed
+# diff — and the suite began failing the day the real scripts/ grew past the
+# reviewer's 100 kB budget, for a reason that had nothing to do with the
+# review gate it is testing.
 git init -q -b main "$work/upstream"
+cp -r "$repo_root/scripts" "$work/upstream/scripts"
+cp -r "$repo_root/.githooks" "$work/upstream/.githooks"
+git -C "$work/upstream" add -A
 git -C "$work/upstream" -c user.name=test -c user.email=test@test \
-  commit -q --allow-empty -m "chore: init"
+  commit -qm "chore: init"
 git clone -q "$work/upstream" "$work/repo"
 cd "$work/repo"
 git config user.name test
 git config user.email test@test
-cp -r "$repo_root/scripts" scripts
-cp -r "$repo_root/.githooks" .githooks
 git checkout -q -b feature
 echo "some change" > file.txt
 git add . && git commit -qm "feat: change"

@@ -93,6 +93,38 @@ if ! awk '/^on:/ { in_on = 1; next } /^[^ #]/ { in_on = 0 } in_on' "$workflow" |
   fail=1
 fi
 
+# 3. A guard that branches must have a test suite.
+#
+# Branching is where a guard can stop enforcing without going red: an `if` that
+# is never true, a `for` over a glob that matches nothing, a scope check that
+# always says "skip". None of those print anything, and a guard that quietly
+# does nothing is indistinguishable from one that found nothing wrong.
+#
+# So the rule is mechanical: own control flow (a line starting with if/for/
+# while/case) means scripts/tests/<name>-test.sh must exist. Guards that only
+# fetch a pinned tool and hand it the repository have nothing to assert about
+# beyond lib.sh, which lib-test.sh already covers.
+declare -A NO_SUITE=(
+  [dup-check]="the one branch is a missing-npx check that exits 1 with a message — it cannot take a silent path"
+  [shell-lint]="the loop body is \"\$suite\", so an empty glob runs a nonexistent file and fails loudly rather than skipping"
+  [workflow-security]="the one branch chooses zizmor's flags and prints which audits it dropped"
+  [go-env]="toolchain bootstrap: every branch ends in a checksum comparison, which fails hard"
+  [web-env]="toolchain bootstrap: every branch ends in npm ci against the committed lockfile, which fails hard"
+)
+
+for guard in scripts/guards/*.sh; do
+  name=$(basename "$guard" .sh)
+  grep -qE '^[[:space:]]*(if|for|while|case)[[:space:]]' "$guard" || continue
+  [ -z "${NO_SUITE[$name]:-}" ] || continue
+  if [ ! -f "scripts/tests/$name-test.sh" ]; then
+    echo "guards: $guard branches but has no scripts/tests/$name-test.sh" >&2
+    echo "guards:   a branch that is never taken prints nothing and exits 0, exactly" \
+      "like a guard that passed — write a case that must fail, or record in" \
+      "NO_SUITE why this branch cannot fail silently" >&2
+    fail=1
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
   exit 1
 fi

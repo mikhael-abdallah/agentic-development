@@ -25,22 +25,8 @@ cd web
 npm run -s test:coverage
 
 report=coverage/cobertura-coverage.xml
-if [ ! -f "$report" ]; then
-  echo "guards: vitest did not produce $report" >&2
-  exit 1
-fi
-
-# Path drift between the report and diff-cover's git view would not fail
-# this gate — it would silently disable it (no matching lines = vacuous
-# pass). Pin the alignment: every file the report names must exist at the
-# path diff-cover will resolve it to (relative to web/).
-while IFS= read -r covered; do
-  if [ ! -f "$covered" ]; then
-    echo "guards: coverage report names '$covered' but web/$covered does not exist —" \
-      "path drift would silently disable the patch-coverage gate" >&2
-    exit 1
-  fi
-done < <(grep -o 'filename="[^"]*"' "$report" | sed 's/^filename="//; s/"$//' | sort -u)
+# vitest writes paths relative to web/, which is the directory this runs in.
+assert_coverage_paths "$report" .
 
 # The report's paths are relative to web/, so diff-cover runs here too.
 diff_cover=$(ensure_diff_cover "$DIFF_COVER_VERSION")
