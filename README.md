@@ -69,3 +69,14 @@ First project: an interactive **system design simulator** — drag components on
 
 Bootstrap phase — the pipeline comes first, the product second. The guardrails
 are in place; the simulator is next.
+
+## Security
+
+Report vulnerabilities privately — see [SECURITY.md](SECURITY.md). The
+guardrails are in scope, and are the most interesting target: a way to make a
+gate pass without enforcing anything is the defect this repository most wants
+to hear about.
+
+## License
+
+[MIT](LICENSE).
