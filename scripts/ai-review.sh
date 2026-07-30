@@ -52,11 +52,23 @@ if ! base=$(git merge-base "$BASE_REMOTE/$BASE_BRANCH" "$target"); then
   exit 1
 fi
 
+# Machine-generated files aren't reviewable code: they'd flood the diff
+# budget and the reviewer's context with noise (a lockfile alone can be
+# thousands of lines). Excluded from the diff the reviewer is fed — it can
+# still Read them in the worktree when a finding calls for it.
+generated=(
+  ':(glob,exclude)**/package-lock.json'
+  ':(glob,exclude)**/npm-shrinkwrap.json'
+  ':(glob,exclude)**/yarn.lock'
+  ':(glob,exclude)**/pnpm-lock.yaml'
+  ':(glob,exclude)**/next-env.d.ts'
+)
+
 # One streamed pass sizes the diff before it is materialized in memory;
 # zero bytes doubles as the no-changes check.
-diff_bytes=$(git diff "$base" "$target" | wc -c)
+diff_bytes=$(git diff "$base" "$target" -- . "${generated[@]}" | wc -c)
 if [ "$diff_bytes" -eq 0 ]; then
-  echo "ai-review: no changes in $target vs $BASE_REMOTE/$BASE_BRANCH"
+  echo "ai-review: no reviewable changes in $target vs $BASE_REMOTE/$BASE_BRANCH (generated files are excluded)"
   exit 0
 fi
 if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
@@ -65,7 +77,7 @@ if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
 fi
 
 commits=$(git log --format='%h %s' "$base".."$target")
-diff=$(git diff "$base" "$target")
+diff=$(git diff "$base" "$target" -- . "${generated[@]}")
 
 # Random fence: diff content cannot fake its own boundary, and the reviewer
 # is told everything inside it is untrusted data.
