@@ -53,6 +53,7 @@ check_commit_titles() {
 # otherwise a pass-through that prints its justification (dependency-review).
 # Cheap and specific first, npx-based last.
 run "parity-check" scripts/guards/parity-check.sh
+run "structure-check" scripts/guards/structure-check.sh
 run "pr-title" check_commit_titles
 run "pr-guard" scripts/guards/size-guard.sh "$ref"
 run "workflow-lint" scripts/guards/workflow-lint.sh
