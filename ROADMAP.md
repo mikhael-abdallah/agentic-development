@@ -25,7 +25,7 @@ Plus: all actions pinned to commit SHAs; Dependabot keeps them fresh.
 
 These guards also run **locally on pre-push** (`scripts/local-guards.sh`, shared with CI via `scripts/guards/`), before the AI review — a doomed push costs no reviewer tokens and no runner cycles. CI remains the enforcing backstop.
 
-## Phase 2 — Go engine gates (gates live locally; CI wiring in the paired `ci:` PR)
+## Phase 2 — Go engine gates ✅
 
 | Check | Tool | Enforces |
 |---|---|---|
