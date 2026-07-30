@@ -157,6 +157,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # guard_applies needs the base branch to decide whether this gate
+          # has anything to do; a shallow clone has no origin/main.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Web static gates (tsc, eslint, knip)
@@ -180,6 +183,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # guard_applies needs the base branch to decide whether this gate
+          # has anything to do; a shallow clone has no origin/main.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Next build and first-load bundle budget
@@ -191,6 +197,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # guard_applies needs the base branch to decide whether this gate
+          # has anything to do; a shallow clone has no origin/main.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Lint the Go engine with golangci-lint
@@ -214,6 +223,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # guard_applies needs the base branch to decide whether this gate
+          # has anything to do; a shallow clone has no origin/main.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Scan Go dependencies with govulncheck

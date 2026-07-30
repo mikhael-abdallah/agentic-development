@@ -63,6 +63,18 @@ while IFS= read -r job; do
   if [ -n "${NOT_A_SCRIPT[$job]:-}" ]; then
     continue
   fi
+  # A guard that scopes itself by diff needs the base branch to compare
+  # against, and actions/checkout is shallow by default. Without full history
+  # it fails open and does the expensive work on every PR — safe, but the
+  # optimisation is silently gone and nothing reports it.
+  if grep -qE '^guard_applies ' "scripts/guards/$job.sh" 2>/dev/null &&
+    ! job_body "$job" | grep -q 'fetch-depth: 0'; then
+    echo "guards: job '$job' runs a scoped guard but checks out shallowly" >&2
+    echo "guards:   add 'fetch-depth: 0', or the scope check has no base to" \
+      "compare against and quietly stops skipping anything" >&2
+    fail=1
+  fi
+
   if ! job_body "$job" | grep -qF "scripts/guards/$job.sh"; then
     echo "guards: CI job '$job' does not run scripts/guards/$job.sh" >&2
     echo "guards:   the job name is what the ruleset requires, so a job that keeps" \
