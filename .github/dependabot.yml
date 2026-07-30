@@ -54,3 +54,22 @@ updates:
       - dependency-name: eslint
         update-types:
           - version-update:semver-major
+      # Same shape, different plugin: typescript-eslint declares
+      # `typescript: ">=4.8.4 <6.1.0"`, so typescript 7 cannot install and PR
+      # #39 failed npm ci for it, taking the rest of the group with it.
+      #
+      # A version range rather than semver-major, and the difference matters:
+      # that peer range *allows* typescript 6.0, which is already published as
+      # a beta. Ignoring the major would have blocked a version that works, and
+      # done it silently — the same shape of mistake as the block this entry
+      # exists to remove.
+      #
+      # Forcing 7 in is not an option worth having. It needs either
+      # --legacy-peer-deps, which switches off peer resolution for every
+      # dependency permanently, or dropping typescript-eslint, which is the
+      # whole type-aware lint layer. Both trade a real gate for a compiler
+      # version. Revisit when the peer range moves:
+      #   npm view typescript-eslint peerDependencies.typescript
+      - dependency-name: typescript
+        versions:
+          - ">= 7"
