@@ -73,6 +73,9 @@ check "no merge base exits 1" 1 \
 git checkout -q feature
 
 # pre-push hook: reviews pushed branch shas, skips deletions and non-branches.
+# Real guards run linters and download tools — out of scope here, so skip
+# them; the guard→hook wiring is tested below with a stub.
+export SKIP_GUARDS=1
 hook() {
   local stdin_line=$1
   shift
@@ -103,5 +106,19 @@ check_hook "hook skips branch deletion" 0 \
 check_hook "hook skips tags" 0 \
   "refs/tags/v1 $feature_sha refs/tags/v1 $zero_sha" \
   STUB_OUTPUT='VERDICT: REQUEST_CHANGES'
+
+# Guard wiring: the hook must run local-guards before the review and stop on
+# failure. Stub the guards (the real ones are exercised by CI and real pushes).
+cat > scripts/local-guards.sh <<'GUARD_STUB'
+#!/usr/bin/env bash
+exit "${GUARD_EXIT:-0}"
+GUARD_STUB
+chmod +x scripts/local-guards.sh
+check_hook "hook blocks push when guards fail" 1 \
+  "refs/heads/feature $feature_sha refs/heads/feature $zero_sha" \
+  GUARD_EXIT=1 STUB_OUTPUT='VERDICT: APPROVE'
+check_hook "hook pushes when guards and review pass" 0 \
+  "refs/heads/feature $feature_sha refs/heads/feature $zero_sha" \
+  GUARD_EXIT=0 STUB_OUTPUT='VERDICT: APPROVE'
 
 exit "$fail"

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Runs the AI review loop on every branch being pushed.
+# Runs the local guards and then the AI review loop on every branch being
+# pushed — guards first, so broken pushes never spend reviewer tokens.
 # Enable once per clone:  git config core.hooksPath .githooks
 #
-# git feeds pushed refs on stdin: review each refs/heads/* ref at the sha
-# actually being pushed; skip deletions and tags.
+# git feeds pushed refs on stdin: check each refs/heads/* ref at the sha
+# actually being pushed; skip deletions and tags. stdin is redirected away
+# from the scripts so they can't consume the remaining refs.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
@@ -13,12 +15,14 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     refs/heads/*)
       # all-zero sha = deletion, regardless of hash algorithm (SHA-1/SHA-256)
       if [ -n "${local_sha//0/}" ]; then
+        echo "pre-push: guards for $local_ref"
+        "$root/scripts/local-guards.sh" "$local_sha" < /dev/null
         echo "pre-push: ai-review for $local_ref"
-        "$root/scripts/ai-review.sh" "$local_sha"
+        "$root/scripts/ai-review.sh" "$local_sha" < /dev/null
       fi
       ;;
     *)
-      echo "pre-push: skipping ai-review for $local_ref (not a branch)"
+      echo "pre-push: skipping checks for $local_ref (not a branch)"
       ;;
   esac
 done
