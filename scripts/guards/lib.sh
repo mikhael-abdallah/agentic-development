@@ -9,6 +9,10 @@
 # ensure_diff_cover VERSION — installs diff-cover into a cached venv on
 # first use and prints the path of its binary. Shared by the Go and web
 # patch-coverage gates so both languages ride the same mechanism.
+#
+# assert_coverage_paths REPORT ROOT — the coverage report lines up with the
+# tree diff-cover will read, so the patch-coverage gate cannot pass by
+# matching nothing.
 
 TOOL_CACHE="${RUNNER_TOOL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/agentic-tools}"
 
@@ -151,6 +155,45 @@ fetch_binary() {
   fi
   chmod +x "$bin"
   printf '%s\n' "$bin"
+}
+
+# assert_coverage_paths REPORT ROOT — every file the Cobertura report names
+# exists under ROOT, and the report names at least one file.
+#
+# Both halves guard the same failure: diff-cover matches the report against the
+# git diff by path, and a path it cannot match is simply not counted. Drift
+# between the two views — a report written with module-relative paths read from
+# the repo root, a coverage tool that stopped emitting anything — does not turn
+# the patch-coverage gate red. It makes every changed line invisible to it, and
+# an empty intersection is reported as success. So the alignment is asserted
+# here rather than assumed, in one place both language gates share.
+assert_coverage_paths() {
+  local report=$1 root=$2 covered count=0 missing=0
+
+  if [ ! -f "$report" ]; then
+    echo "guards: no coverage report at $report — the test run produced nothing" \
+      "for the patch-coverage gate to read" >&2
+    return 1
+  fi
+
+  while IFS= read -r covered; do
+    count=$((count + 1))
+    if [ ! -f "$root/$covered" ]; then
+      echo "guards: coverage report names '$covered' but $root/$covered does not exist" >&2
+      missing=1
+    fi
+  done < <(grep -o 'filename="[^"]*"' "$report" | sed 's/^filename="//; s/"$//' | sort -u)
+
+  if [ "$count" -eq 0 ]; then
+    echo "guards: coverage report $report names no files at all — diff-cover would" \
+      "have nothing to match the diff against and pass vacuously" >&2
+    return 1
+  fi
+  if [ "$missing" -ne 0 ]; then
+    echo "guards:   path drift like this does not fail the patch-coverage gate," \
+      "it silently switches it off" >&2
+    return 1
+  fi
 }
 
 # diff-cover is Python-only, so it lives in a cached venv, versioned like

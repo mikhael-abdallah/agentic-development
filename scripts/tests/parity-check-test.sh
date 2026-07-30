@@ -17,8 +17,11 @@ git init -q -b main "$work/repo"
 cd "$work/repo"
 git config user.name test
 git config user.email test@test
-mkdir -p .github/workflows scripts/guards
+mkdir -p .github/workflows scripts/guards scripts/tests
 cp "$repo_root/scripts/guards/parity-check.sh" scripts/guards/
+# parity-check branches, so by its own rule it needs a suite of its own; the
+# real one is what is running right now.
+touch scripts/tests/parity-check-test.sh
 
 workflow=.github/workflows/guardrails.yml
 
@@ -106,5 +109,28 @@ check "rejects a pull_request trigger without 'edited'" 1
 # A workflow it cannot parse must fail loudly rather than report zero jobs.
 printf 'name: guardrails\non:\n  pull_request:\n    types: [edited]\njobs:\n' > "$workflow"
 check "rejects a workflow with no parsable jobs" 1
+
+# --- guards that branch need a test suite ------------------------------------
+
+write_workflow "$good_beta"
+check "the baseline is green again" 0
+
+# No control flow of its own: nothing here can quietly take the do-nothing
+# path, so there is nothing for a suite to assert.
+printf '#!/usr/bin/env bash\nset -euo pipefail\nsome-tool .\n' > scripts/guards/alpha.sh
+check "a guard that only runs a tool needs no suite" 0
+
+printf '#!/usr/bin/env bash\nset -euo pipefail\nif [ -f marker ]; then\n  exit 1\nfi\n' \
+  > scripts/guards/alpha.sh
+check "rejects a branching guard with no test suite" 1
+
+touch scripts/tests/alpha-test.sh
+check "accepts a branching guard once it has one" 0
+
+# The loop form of the same hole: a glob that matches nothing runs the body
+# zero times and exits 0.
+printf '#!/usr/bin/env bash\nset -euo pipefail\nfor f in *.x; do\n  echo found\ndone\n' \
+  > scripts/guards/gamma.sh
+check "rejects a looping guard with no test suite" 1
 
 exit "$fail"
