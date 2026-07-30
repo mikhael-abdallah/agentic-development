@@ -109,7 +109,6 @@ declare -A NO_SUITE=(
   [shell-lint]="the loop body is \"\$suite\", so an empty glob runs a nonexistent file and fails loudly rather than skipping"
   [workflow-security]="the one branch chooses zizmor's flags and prints which audits it dropped"
   [go-env]="toolchain bootstrap: every branch ends in a checksum comparison, which fails hard"
-  [web-env]="toolchain bootstrap: every branch ends in npm ci against the committed lockfile, which fails hard"
 )
 
 for guard in scripts/guards/*.sh; do
