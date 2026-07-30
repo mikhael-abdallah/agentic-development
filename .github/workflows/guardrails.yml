@@ -125,6 +125,40 @@ jobs:
         with:
           fail-on-severity: high
 
+  web-lint:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Web static gates (tsc, eslint, knip)
+        run: scripts/guards/web-lint.sh
+
+  web-test:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Web tests and patch-coverage gate
+        run: scripts/guards/web-test.sh
+
+  web-build:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Next build and first-load bundle budget
+        run: scripts/guards/web-build.sh
+
   go-lint:
     runs-on: [self-hosted, linux, agentic]
     timeout-minutes: 15
