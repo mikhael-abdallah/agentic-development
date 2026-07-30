@@ -1,0 +1,55 @@
+# OpenSSF Scorecard — an outside opinion on this repository's own security
+# posture, rather than on the code in it.
+#
+# Deliberately not a required check, and deliberately not on the self-hosted
+# runner:
+#
+#   * It scores the repository, not the diff, so it has nothing useful to say
+#     about an individual pull request.
+#   * Several of its checks cannot pass here by construction (Fuzzing,
+#     Packaging, Signed-Releases — nothing is released yet), and a required
+#     check that can never go green is one we would learn to ignore.
+#   * It runs on a GitHub-hosted runner, free for public repositories, which
+#     keeps the two-core box for the gates that do block a merge.
+#
+# What it adds over the gates that already exist: an independent reading of
+# Token-Permissions, Dangerous-Workflow and Pinned-Dependencies, from a tool
+# that did not write any of this. Findings land in the Security tab.
+name: scorecard
+
+on:
+  # Re-scores when a protection rule changes — the setting most likely to be
+  # weakened without any code changing.
+  branch_protection_rule:
+  schedule:
+    - cron: "27 4 * * 1"
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Upload the SARIF report to code scanning.
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publishing sends the score to the public OpenSSF dataset. Left off:
+          # that is a decision about what this repository broadcasts, not a
+          # guardrail, and the findings are just as useful in the Security tab.
+          publish_results: false
+
+      - uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        with:
+          sarif_file: results.sarif
