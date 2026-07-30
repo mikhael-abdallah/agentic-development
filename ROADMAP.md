@@ -95,6 +95,7 @@ per PR.
 ## Phase 5 — AI review loop ✅
 
 - `scripts/ai-review.sh` — spawns a headless AI reviewer (`claude -p`) over the branch diff against `origin/main`, with read-only repo access (Read/Grep/Glob) in a clean worktree of the reviewed sha, writing findings to a gitignored `AI_REVIEW.md`; exits non-zero unless the verdict is APPROVE, so the coding agent reads it and fixes issues *before* opening the PR. Enable as a push gate with `git config core.hooksPath .githooks`, or invoke explicitly.
+- The reviewer is aimed at what the other guards cannot see. It is given `AGENTS.md` **from the base branch** — so a diff cannot rewrite the standard it is about to be judged against — and asked to enforce the judgement calls no linter can: a threshold moved without a reason, a suppression with no justification, an undeclared dependency, a gate dodged by relocating code. It must first try to *break* the change and report the attempt; and a suggestion has to name something wrong rather than something absent, because "add a comment here" is advice that always looks actionable, can never be wrong, and quietly turns a review into a prose generator. Every run appends to a gitignored `.ai-review-log.md` — without a record, "has this ever caught a real bug?" has no answer but the last one anybody remembers.
 - [`AGENTS.md`](AGENTS.md) — the contract for coding agents: small PRs, conventional titles, run the review loop, never touch guardrail configs outside a `ci:`-titled PR.
 
 *(Implemented out of order — it needs no product code, unlike phases 2–4.)*

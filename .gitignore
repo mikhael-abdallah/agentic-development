@@ -2,8 +2,10 @@
 PRIVATE.md
 private/
 
-# Local AI review output (scripts/ai-review.sh)
+# Local AI review output (scripts/ai-review.sh): the latest review, and the
+# running record of every review this checkout has run.
 AI_REVIEW.md
+.ai-review-log.md
 
 # Secrets & environment
 .env
