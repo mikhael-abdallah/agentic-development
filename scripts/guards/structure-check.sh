@@ -140,10 +140,11 @@ check_web_root() {
         ;;
       package.json | package-lock.json | tsconfig.json | knip.json | \
         next-env.d.ts | .npmrc | .gitignore | \
-        *.config.ts | *.config.mts | *.config.mjs) ;;
+        *.config.ts | *.config.mts | *.config.mjs | \
+        *.setup.ts) ;;
       *)
         violation "unexpected file 'web/$path'" \
-          "the web root holds manifests, dotfiles and *.config.* only"
+          "the web root holds manifests, dotfiles, *.config.* and *.setup.ts only"
         ;;
     esac
   done < <(paths_under 'web/')

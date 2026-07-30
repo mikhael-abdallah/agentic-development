@@ -7,6 +7,17 @@ export default defineConfig({
   resolve: { alias: { "@": new URL("src", import.meta.url).pathname } },
   test: {
     environment: "jsdom",
+    // Unmounts what each test rendered — see the file for why it is not
+    // automatic here.
+    setupFiles: ["./vitest.setup.ts"],
+    // The Go gate runs `go test -shuffle=on`; this is its counterpart.
+    // Order dependence is one of the few defects a passing suite hides: a
+    // test that only passes because an earlier one left state behind stays
+    // green until the day something is inserted above it. Vitest isolates
+    // files but does not shuffle, so within-file order — and the module state
+    // a file's tests share — would otherwise never be exercised any other way.
+    // The seed is printed on failure, so a red run stays reproducible.
+    sequence: { shuffle: true },
     include: ["src/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
