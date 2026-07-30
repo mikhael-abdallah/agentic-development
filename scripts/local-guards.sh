@@ -60,6 +60,9 @@ run "shell-lint" scripts/guards/shell-lint.sh
 run "secret-scan" scripts/guards/secret-scan.sh
 run "workflow-security" scripts/guards/workflow-security.sh
 run "dup-check" scripts/guards/dup-check.sh
+run "go-lint" scripts/guards/go-lint.sh
+run "go-test" scripts/guards/go-test.sh
+run "go-vuln" scripts/guards/go-vuln.sh
 run "dependency-review" scripts/guards/dependency-review.sh
 
 if [ "${#failed[@]}" -gt 0 ]; then
