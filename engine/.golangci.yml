@@ -1,0 +1,76 @@
+# golangci-lint v2 — clean-code gates for the Go engine (ROADMAP phase 2).
+#
+# Limits are tuned for Go, where explicit `if err != nil` handling adds
+# vertical space that says nothing about complexity: funlen 80 / file length
+# 600 keep functions and files honest, while cyclop / gocognit / nestif are
+# the real complexity gates. Ratchet, don't relax: these only tighten.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose    # HTTP response bodies are closed
+    - cyclop       # cyclomatic complexity
+    - depguard     # architecture boundaries
+    - errchkjson   # JSON encode errors are handled
+    - errorlint    # errors.Is/As over == and type asserts
+    - exhaustive   # switch covers every enum value
+    - funlen       # function length
+    - gocognit     # cognitive complexity
+    - gosec        # security anti-patterns
+    - makezero     # append after make([]T, n) overwrites nothing
+    - nestif       # nesting depth
+    - nolintlint   # every nolint needs a justification
+    - prealloc     # pre-allocate slices when the size is known
+    - revive
+    - testifylint  # correct testify assertions (dormant until testify is used)
+    - unparam      # unused function parameters
+
+  settings:
+    cyclop:
+      max-complexity: 12
+    funlen:
+      lines: 80
+      statements: 50
+    gocognit:
+      min-complexity: 20
+    nestif:
+      min-complexity: 4
+    depguard:
+      rules:
+        # The simulation engine is transport-agnostic: HTTP belongs in a
+        # future api layer, which will get its own allow rules.
+        transport-free-engine:
+          list-mode: lax
+          deny:
+            - pkg: net/http
+              desc: the engine must not know about HTTP; keep it in the api layer
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+        - name: file-length-limit
+          arguments:
+            - max: 600
+              skipComments: true
+              skipBlankLines: true
+
+  exclusions:
+    rules:
+      # Test files: table-driven tests legitimately run long and repetitive.
+      - path: _test\.go
+        linters: [funlen, gocognit, cyclop, nestif]
+
+formatters:
+  enable:
+    - gofumpt
+    - gci # deterministic import order: stdlib, third-party, this module
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
