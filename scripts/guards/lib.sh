@@ -104,6 +104,13 @@ WEB_GUARD_SCOPE='^(web/|scripts/|\.github/)'
 guard_applies() {
   local name=$1 scope=$2 base merge_base changed
   base="origin/${GITHUB_BASE_REF:-main}"
+  # Tolerant fetch, same as the coverage gates: a local clone may simply not
+  # have the base yet. In CI the workflow checks these jobs out with
+  # fetch-depth 0 — parity-check enforces that, because a shallow checkout
+  # would land here with no base, fail open, and silently do the expensive
+  # work on every PR with nothing saying the scoping had stopped applying.
+  git rev-parse --verify -q "$base" >/dev/null ||
+    git fetch -q origin "${GITHUB_BASE_REF:-main}" 2>/dev/null || true
   git rev-parse --verify -q "$base" >/dev/null || return 0
   merge_base=$(git merge-base "$base" HEAD 2>/dev/null) || return 0
   # Working tree and untracked files count too, so a local pre-push run sees
