@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Local mirror of the CI guards (.github/workflows/guardrails.yml). The
+# pre-push hook runs this before the AI review, so a push that CI would
+# reject anyway never spends reviewer tokens or runner cycles — the PR
+# checks stay on as the backstop.
+#
+# Not mirrored: dependency-review (needs the GitHub API's view of the PR),
+# and the PR title itself (doesn't exist before the PR — commit subjects
+# are checked instead, since one of them usually becomes the title).
+#
+# Usage:  scripts/local-guards.sh [ref]   (default HEAD; .githooks/pre-push
+#                                          passes each pushed branch sha)
+# Bypass: SKIP_GUARDS=1 git push   (emergencies only — CI still runs them)
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+if [ "${SKIP_GUARDS:-0}" = "1" ]; then
+  echo "local-guards: skipped (SKIP_GUARDS=1)"
+  exit 0
+fi
+
+ref="${1:-HEAD}"
+failed=()
+
+run() {
+  local name=$1
+  shift
+  echo "── local-guards: $name"
+  if ! "$@"; then
+    failed+=("$name")
+  fi
+}
+
+# Stricter than CI on purpose: CI checks only the PR title, this checks every
+# pushed commit subject — keep even intermediate commits conventional.
+check_commit_titles() {
+  if ! git fetch -q origin main; then
+    echo "guards: cannot fetch origin/main (offline?)" >&2
+    return 1
+  fi
+  local base bad=0
+  base=$(git merge-base origin/main "$ref")
+  while IFS= read -r subject; do
+    [ -n "$subject" ] || continue
+    scripts/guards/title-lint.sh "$subject" || bad=1
+  done < <(git log --format='%s' "$base".."$ref")
+  return "$bad"
+}
+
+# Cheap and specific first, npx-based last.
+run "commit-titles" check_commit_titles
+run "size-guard" scripts/guards/size-guard.sh "$ref"
+run "workflow-lint" scripts/guards/workflow-lint.sh
+run "shell-lint" scripts/guards/shell-lint.sh
+run "secret-scan" scripts/guards/secret-scan.sh
+run "workflow-security" scripts/guards/workflow-security.sh
+run "dup-check" scripts/guards/dup-check.sh
+
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo "local-guards: FAILED — ${failed[*]}" >&2
+  exit 1
+fi
+echo "local-guards: all guards passed"

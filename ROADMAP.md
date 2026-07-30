@@ -22,6 +22,8 @@ Phased plan for the quality gates that let AI-written code merge without human r
 
 Plus: all actions pinned to commit SHAs; Dependabot keeps them fresh.
 
+These guards also run **locally on pre-push** (`scripts/local-guards.sh`, shared with CI via `scripts/guards/`), before the AI review — a doomed push costs no reviewer tokens and no runner cycles. CI remains the enforcing backstop.
+
 ## Phase 2 — Go engine gates (when Go code lands)
 
 - **golangci-lint v2** with clean-code limits: `funlen` ≤ 60 lines, `cyclop` ≤ 12, `gocognit` ≤ 20, `nestif` ≤ 4, revive `argument-limit` 4 params, `file-length-limit` ~400 lines; plus `gosec`, `errorlint`, `exhaustive`, `bodyclose`, `unparam`, `nolintlint`; `gofumpt` + `goimports` formatting. Test files exempt from length/complexity rules.
