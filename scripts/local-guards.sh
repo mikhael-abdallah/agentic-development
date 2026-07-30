@@ -54,6 +54,7 @@ check_commit_titles() {
 # Cheap and specific first, npx-based last.
 run "parity-check" scripts/guards/parity-check.sh
 run "structure-check" scripts/guards/structure-check.sh
+run "unicode-check" scripts/guards/unicode-check.sh
 run "pr-title" check_commit_titles
 run "pr-guard" scripts/guards/pr-guard.sh "$ref"
 run "workflow-lint" scripts/guards/workflow-lint.sh
