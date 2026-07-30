@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mikhael-abdallah/agentic-development/engine/sim"
+	"github.com/mikhael-abdallah/agentic-development/engine/internal/sim"
 )
 
 func TestNewQueueRejectsInvalidInput(t *testing.T) {

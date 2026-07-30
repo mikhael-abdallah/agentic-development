@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mikhael-abdallah/agentic-development/engine/sim"
+	"github.com/mikhael-abdallah/agentic-development/engine/internal/sim"
 )
 
 func TestCompose(t *testing.T) {
