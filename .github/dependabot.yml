@@ -39,3 +39,18 @@ updates:
       npm:
         patterns:
           - "*"
+    # A grouped update is all-or-nothing: one member that cannot install takes
+    # every other member down with it. eslint 10 is that member — the plugins
+    # this config depends on still declare `eslint: ^9` as their peer range, so
+    # `npm ci` fails to resolve and web-lint, web-test and web-build all fail.
+    # Left alone it is re-proposed weekly, fails weekly, and blocks unrelated
+    # bumps (typescript, in PR #37) behind a dependency we cannot act on.
+    #
+    # Only the major is ignored, so eslint 9.x patches — including security
+    # releases, which cooldown already exempts — still arrive. Remove this
+    # entry once the plugins accept eslint 10; the check is one command:
+    #   npm view eslint-plugin-jsx-a11y peerDependencies.eslint
+    ignore:
+      - dependency-name: eslint
+        update-types:
+          - version-update:semver-major
