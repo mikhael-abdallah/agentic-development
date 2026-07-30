@@ -63,6 +63,9 @@ run "dup-check" scripts/guards/dup-check.sh
 run "go-lint" scripts/guards/go-lint.sh
 run "go-test" scripts/guards/go-test.sh
 run "go-vuln" scripts/guards/go-vuln.sh
+run "web-lint" scripts/guards/web-lint.sh
+run "web-test" scripts/guards/web-test.sh
+run "web-build" scripts/guards/web-build.sh
 run "dependency-review" scripts/guards/dependency-review.sh
 
 if [ "${#failed[@]}" -gt 0 ]; then
