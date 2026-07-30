@@ -42,6 +42,17 @@ jobs:
       - name: Repository layout matches ARCHITECTURE.md
         run: scripts/guards/structure-check.sh
 
+  unicode-check:
+    runs-on: [self-hosted, linux, agentic]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reject invisible and direction-changing Unicode
+        run: scripts/guards/unicode-check.sh
+
   secret-scan:
     runs-on: [self-hosted, linux, agentic]
     timeout-minutes: 10
