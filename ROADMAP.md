@@ -79,7 +79,8 @@ per PR.
   injection sinks — not code an LLM *wrote*. Nothing off the shelf covers the
   latter. Seed it empirically: every time a bug reaches `main`, add the rule.
 - **CodeQL** on GitHub-hosted runners (free for public repos, and it keeps the
-  self-hosted box free). Overlaps `gosec` and `eslint-plugin-security` on
+  self-hosted box free — the same pattern `scorecard.yml` already uses).
+  Overlaps `gosec` and `eslint-plugin-security` on
   single-function patterns, but adds cross-file taint tracking that neither
   has.
 - **nilaway** (Uber) — interprocedural nil-flow analysis, which golangci-lint
