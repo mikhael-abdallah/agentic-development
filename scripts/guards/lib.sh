@@ -127,6 +127,32 @@ guard_applies() {
   return 1
 }
 
+# fetch_binary NAME VERSION SHA256 URL — for projects that publish a bare
+# executable rather than an archive. Same contract as fetch_tool: verified on
+# download and again on every cache hit, for the same tool-cache reason.
+fetch_binary() {
+  local name=$1 version=$2 sha=$3 url=$4
+  # Two statements: bash expands every word of a `local` before assigning any
+  # of them, so "$dir" would still be unset on the same line.
+  local dir="$TOOL_CACHE/$name/$version"
+  local bin="$dir/$name"
+  if [ ! -f "$bin" ]; then
+    mkdir -p "$dir"
+    if ! curl -sSfL -o "$bin" "$url"; then
+      echo "guards: failed to download $name $version" >&2
+      rm -rf "$dir"
+      return 1
+    fi
+  fi
+  if ! verify_sha256 "$bin" "$sha" "cached $name $version binary"; then
+    echo "guards: the cached copy does not match the pinned hash — removing it" >&2
+    rm -rf "$dir"
+    return 1
+  fi
+  chmod +x "$bin"
+  printf '%s\n' "$bin"
+}
+
 # diff-cover is Python-only, so it lives in a cached venv, versioned like
 # every other pinned tool. --without-pip + get-pip.py works on machines
 # that lack the python3-venv apt package (ensurepip), so CI and local

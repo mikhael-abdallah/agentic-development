@@ -68,6 +68,7 @@ run "go-vuln" scripts/guards/go-vuln.sh
 run "web-lint" scripts/guards/web-lint.sh
 run "web-test" scripts/guards/web-test.sh
 run "web-build" scripts/guards/web-build.sh
+run "dep-scan" scripts/guards/dep-scan.sh
 run "dependency-review" scripts/guards/dependency-review.sh
 
 if [ "${#failed[@]}" -gt 0 ]; then

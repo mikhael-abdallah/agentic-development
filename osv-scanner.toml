@@ -1,0 +1,23 @@
+# Suppressions for dep-scan (scripts/guards/dep-scan.sh).
+#
+# Same contract as a nolint or an eslint-disable in this repository: a written
+# reason, and here an expiry date as well, so an ignore cannot quietly become
+# permanent. Nothing is ignored because it is inconvenient.
+
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-10-31
+reason = """
+brace-expansion 1.1.17 (ReDoS, high). Development-only, and unfixable here
+today rather than unimportant:
+
+  - It is reached solely through ESLint's minimatch ^3.1.5, which pins
+    brace-expansion ^1.x. Nothing in the shipped bundle touches it.
+  - The advisory covers <= 5.0.7, so the only fix is 5.0.8 — across four
+    majors. brace-expansion 5.x exports { expand, ... } where 1.x exported the
+    function itself, so forcing it via npm overrides makes minimatch 3 call a
+    non-function and breaks ESLint outright. Verified, not assumed.
+
+The fix is upstream: ESLint moving to minimatch 10. Revisit at the expiry date
+and either drop this entry or restate why it still holds.
+"""
