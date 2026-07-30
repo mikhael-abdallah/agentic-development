@@ -9,6 +9,7 @@ version: "2"
 linters:
   default: standard
   enable:
+    - bidichk      # no bidirectional-override characters in Go source
     - bodyclose    # HTTP response bodies are closed
     - cyclop       # cyclomatic complexity
     - depguard     # architecture boundaries
@@ -19,12 +20,17 @@ linters:
     - gocognit     # cognitive complexity
     - gosec        # security anti-patterns
     - makezero     # append after make([]T, n) overwrites nothing
+    - forbidigo    # banned calls (a skipped test — see settings)
     - nestif       # nesting depth
+    - nilerr       # returning nil when err is non-nil
     - nolintlint   # every nolint needs a justification
     - prealloc     # pre-allocate slices when the size is known
     - revive
     - testifylint  # correct testify assertions (dormant until testify is used)
+    - thelper      # test helpers call t.Helper()
+    - tparallel    # t.Parallel() used consistently
     - unparam      # unused function parameters
+    - usetesting   # t.TempDir/t.Setenv over the os equivalents
 
   settings:
     cyclop:
@@ -82,9 +88,20 @@ linters:
           deny:
             - pkg: github.com/mikhael-abdallah/agentic-development/engine/cmd
               desc: cmd holds binaries; extract shared code into internal instead
+    forbidigo:
+      forbid:
+        # A skipped test still reports as passing, which makes skipping the
+        # cheapest way to turn a red gate green. Deleting the test at least
+        # shows up in the coverage gate.
+        - pattern: ^t\.Skip(Now|f)?$
+          msg: a skipped test passes without testing anything; fix or delete it
     nolintlint:
       require-explanation: true
       require-specific: true
+    staticcheck:
+      # The default set is a subset. All of it, minus the doc-comment style
+      # rules, which say nothing about correctness.
+      checks: ["all", "-ST1000", "-ST1020", "-ST1021", "-ST1022"]
     revive:
       rules:
         - name: argument-limit
