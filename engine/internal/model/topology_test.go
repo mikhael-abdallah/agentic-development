@@ -164,6 +164,10 @@ func TestValidateRejects(t *testing.T) {
 		{"a database read that costs nothing", func(tp *model.Topology) {
 			tp.Nodes[4].Database.MeanRead = 0
 		}, model.ErrParamRange},
+
+		{"requests flowing in a circle", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "db", To: "api"})
+		}, model.ErrCycle},
 	}
 
 	for _, tt := range tests {

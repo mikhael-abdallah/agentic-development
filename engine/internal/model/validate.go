@@ -20,6 +20,7 @@ var (
 	ErrEdgeShape      = errors.New("edge is a self-loop or a duplicate")
 	ErrClientInbound  = errors.New("the client cannot receive traffic")
 	ErrUnreachable    = errors.New("component cannot be reached from the client")
+	ErrCycle          = errors.New("requests would flow in a circle")
 )
 
 // Validate reports whether this design can be simulated.
@@ -42,7 +43,14 @@ func (t Topology) Validate() error {
 	if err := t.validateEdges(index); err != nil {
 		return err
 	}
-	return t.validateReachability(t.adjacency())
+	adjacency := t.adjacency()
+	// Before reachability, so that a cycle nothing can reach is reported as a
+	// cycle rather than as an unreachable component — the vaguer of the two
+	// errors, and the one that points at the wrong fix.
+	if err := t.validateAcyclic(adjacency); err != nil {
+		return err
+	}
+	return t.validateReachability(adjacency)
 }
 
 // index maps component id to component.
@@ -111,6 +119,53 @@ func (t Topology) validateEdges(index map[string]Node) error {
 		seen[e] = true
 		if to.Kind == KindClient {
 			return fmt.Errorf("%w: %q sends to it", ErrClientInbound, e.From)
+		}
+	}
+	return nil
+}
+
+// validateAcyclic rejects a design where requests could flow in a circle.
+//
+// The invariant is stated here, once, because two things depend on it. The
+// simulation walks this graph per request and would not terminate on a cycle,
+// so without this every traversal it runs would need its own guard — and a
+// guard that is everywhere is a guard nobody maintains. And a circular
+// dependency between components is a design fault worth reporting on its own:
+// the kind a canvas makes easy to draw by accident and hard to see afterwards.
+func (t Topology) validateAcyclic(adjacency map[string][]string) error {
+	// A component absent from the map reads as zero, which is "not visited".
+	// Reaching one still onPath closes a loop; reaching one already done is a
+	// diamond — two paths rejoining, which is ordinary and must be allowed.
+	const (
+		onPath = iota + 1
+		done
+	)
+	state := make(map[string]int, len(t.Nodes))
+
+	var walk func(id string) error
+	walk = func(id string) error {
+		if state[id] == onPath {
+			return fmt.Errorf("%w: %q is on a path that leads back to it", ErrCycle, id)
+		}
+		if state[id] == done {
+			return nil
+		}
+		state[id] = onPath
+		for _, next := range adjacency[id] {
+			if err := walk(next); err != nil {
+				return err
+			}
+		}
+		state[id] = done
+		return nil
+	}
+
+	// Every component, not only those the client can reach: an unreachable
+	// cycle is still a cycle. Iterating t.Nodes rather than the state map
+	// keeps which component gets named in the error the same on every run.
+	for _, n := range t.Nodes {
+		if err := walk(n.ID); err != nil {
+			return err
 		}
 	}
 	return nil
