@@ -4,6 +4,13 @@
 # Run from anywhere inside the real repo:  scripts/tests/ai-review-test.sh
 set -euo pipefail
 
+# The suite asserts exit codes, and both bypass flags force those to 0. An
+# inherited flag would therefore turn most of these assertions green without
+# testing anything — and the suite runs from the pre-push hook, where a
+# developer may well have set one. Each case that needs a bypass sets it
+# itself, so start from a known-clean environment.
+unset SKIP_AI_REVIEW SKIP_GUARDS
+
 repo_root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
