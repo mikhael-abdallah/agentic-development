@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Shared helper for guard scripts. Source it, don't execute it.
 #
-# fetch_tool NAME VERSION URL [TAR_FLAGS...] — downloads the release tarball
-# on first use into the tool cache (CI's RUNNER_TOOL_CACHE, or
-# ~/.cache/agentic-tools locally) and prints the path of the NAME binary
-# found inside it.
+# fetch_tool NAME VERSION TARBALL_SHA256 BINARY_SHA256 URL [TAR_FLAGS...] —
+# downloads the release tarball on first use into the tool cache (CI's
+# RUNNER_TOOL_CACHE, or ~/.cache/agentic-tools locally) and prints the path
+# of the NAME binary found inside it.
 #
 # ensure_diff_cover VERSION — installs diff-cover into a cached venv on
 # first use and prints the path of its binary. Shared by the Go and web
@@ -12,20 +12,68 @@
 
 TOOL_CACHE="${RUNNER_TOOL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/agentic-tools}"
 
+# Patch-coverage settings live here so the Go and web gates cannot drift
+# apart, and so raising the bar is a one-line change in one file.
+# shellcheck disable=SC2034 # read by the guards that source this file
+DIFF_COVER_VERSION=10.4.1
+# shellcheck disable=SC2034 # read by the guards that source this file
+PATCH_COVERAGE_MIN=80
+
+verify_sha256() {
+  local file=$1 want=$2 label=$3 got
+  got=$(sha256sum "$file" | cut -d' ' -f1)
+  if [ "$got" != "$want" ]; then
+    echo "guards: $label failed checksum verification" >&2
+    echo "guards:   expected $want" >&2
+    echo "guards:   got      $got" >&2
+    return 1
+  fi
+}
+
+# Every pinned tool is verified twice: the tarball on download (against the
+# checksum its project publishes, where it publishes one), and the extracted
+# binary on *every* invocation — including cache hits.
+#
+# The second check is the one that matters here. CI runs pull-request code on
+# a long-lived self-hosted runner whose tool cache outlives the job, so a
+# single malicious run could otherwise swap gitleaks or zizmor for a binary
+# that exits 0, silently disarming those gates for every later PR. Comparing
+# against a hash committed to a protected branch closes that.
 fetch_tool() {
-  local name=$1 version=$2 url=$3
-  shift 3
-  local dir="$TOOL_CACHE/$name/$version" bin
+  local name=$1 version=$2 tarball_sha=$3 binary_sha=$4 url=$5
+  shift 5
+  local dir="$TOOL_CACHE/$name/$version" bin tarball
   # '|| true': under errexit+pipefail a cold cache (missing $dir) or a
   # head-closed pipe must fall through to the download, not abort.
-  bin=$(find "$dir" -name "$name" -type f 2>/dev/null | head -1) || true
+  # 'sort' keeps the pick deterministic when a tarball ships two matches.
+  bin=$(find "$dir" -name "$name" -type f 2>/dev/null | sort | head -1) || true
+
   if [ -z "$bin" ]; then
+    rm -rf "$dir"
     mkdir -p "$dir"
-    curl -sSfL "$url" | tar -C "$dir" "$@"
-    bin=$(find "$dir" -name "$name" -type f | head -1) || true
+    tarball="$dir/.download"
+    if ! curl -sSfL -o "$tarball" "$url"; then
+      echo "guards: failed to download $name $version" >&2
+      rm -rf "$dir"
+      return 1
+    fi
+    if ! verify_sha256 "$tarball" "$tarball_sha" "$name $version tarball"; then
+      rm -rf "$dir"
+      return 1
+    fi
+    tar -C "$dir" -f "$tarball" "$@"
+    rm -f "$tarball"
+    bin=$(find "$dir" -name "$name" -type f | sort | head -1) || true
   fi
+
   if [ -z "$bin" ]; then
-    echo "guards: could not find '$name' in the v$version release tarball" >&2
+    echo "guards: could not find '$name' in the $version release tarball" >&2
+    return 1
+  fi
+  if ! verify_sha256 "$bin" "$binary_sha" "cached $name $version binary"; then
+    echo "guards: the cached copy does not match the pinned hash — the tool" \
+      "cache may have been tampered with. Removing it; re-run to reinstall." >&2
+    rm -rf "$dir"
     return 1
   fi
   chmod +x "$bin"

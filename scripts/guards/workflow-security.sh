@@ -7,7 +7,13 @@ cd "$(git rev-parse --show-toplevel)"
 . scripts/guards/lib.sh
 
 ZIZMOR_VERSION=1.28.0
+# zizmor publishes no checksum file, so both hashes were recorded from the
+# release asset. Pinning them still detects a re-uploaded asset and a
+# tampered tool cache — it is not an independent upstream attestation.
+ZIZMOR_TARBALL_SHA256=e87b67160194884e375a46a12c57ccc904f762b53845f254fab7f17d98809c09
+ZIZMOR_BINARY_SHA256=79c9d685e41691920f75f4820435f8fd9e8922e4c6a5f7c70ab2e69bd69fe448
 bin=$(fetch_tool zizmor "$ZIZMOR_VERSION" \
+  "$ZIZMOR_TARBALL_SHA256" "$ZIZMOR_BINARY_SHA256" \
   "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
   -xz)
 

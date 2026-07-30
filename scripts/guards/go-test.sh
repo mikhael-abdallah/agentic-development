@@ -11,8 +11,9 @@ cd "$(git rev-parse --show-toplevel)"
 ensure_go
 
 GOCOVER_COBERTURA_VERSION=v1.5.0
-DIFF_COVER_VERSION=10.4.1
-FAIL_UNDER="${PATCH_COVERAGE_MIN:-80}"
+# DIFF_COVER_VERSION and PATCH_COVERAGE_MIN come from lib.sh: one definition
+# for both languages, and not overridable from the environment — "ratchet,
+# don't relax" has to be a property of the code, not of who runs it.
 
 # Tolerant fetch, same as size-guard: CI checkouts already have the base.
 git fetch -q origin "${GITHUB_BASE_REF:-main}" 2>/dev/null || true
@@ -43,4 +44,4 @@ diff_cover=$(ensure_diff_cover "$DIFF_COVER_VERSION")
 # repo root, so it runs inside engine/ where the two views line up.
 cd engine
 "$diff_cover" "$tmp/coverage.xml" \
-  --compare-branch "$base_branch" --fail-under "$FAIL_UNDER"
+  --compare-branch "$base_branch" --fail-under "$PATCH_COVERAGE_MIN"
