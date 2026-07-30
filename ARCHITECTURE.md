@@ -37,7 +37,8 @@ engine/
     api/            HTTP/JSON transport for engined
 ```
 
-Rules (enforced by `depguard` / `go-arch-lint`):
+Rules (enforced by `depguard` in `go-lint`, and by `structure-check` for
+placement):
 
 - `model` imports nothing from this repo. `sim` imports only `model`.
 - `sim` and `model` are **pure**: no `net/http`, no I/O, no clocks other than
@@ -62,7 +63,8 @@ web/src/
   server/         server-only modules, each importing the `server-only` marker
 ```
 
-Rules (enforced by ESLint/dependency-cruiser once server code lands):
+Rules (enforced by ESLint's `no-restricted-imports` and by `structure-check`;
+the `server/` rule waits until there are server modules to poison):
 
 - Dependencies point one way: `app → features → components|lib`.
   Features never import `app`; `components` and `lib` never import `features`.
@@ -70,7 +72,10 @@ Rules (enforced by ESLint/dependency-cruiser once server code lands):
   move down into `lib` (or a dedicated store module) instead of cross-linking.
 - Client modules never import `server/`; server modules are poisoned against
   client bundles via the `server-only` package.
-- Tests are colocated: `foo.ts` + `foo.test.ts` in the same directory.
+- Tests are colocated: `foo.ts` + `foo.test.ts` in the same directory. No
+  module imports a test file — test files are exempt from the length,
+  complexity and coverage gates, so importing one moves product logic outside
+  all three.
 - All source lives under `src/`; `app/` contains only Next.js route files.
 
 ## Why this shape works for agents
@@ -79,9 +84,12 @@ Rules (enforced by ESLint/dependency-cruiser once server code lands):
   (≤400-line files, complexity caps) keep every module within a single
   context window, and parallel agents working on different features rarely
   touch the same files.
-- **Boundaries are checks, not conventions.** Every arrow above is (or will
-  be) a lint/guard failure when violated — an agent can't drift the
-  architecture without a red check saying so.
+- **Boundaries are checks, not conventions.** Every arrow above is a lint or
+  guard failure when violated — an agent cannot drift the architecture without
+  a red check saying so. The allowlists are narrow on purpose: adding a Go
+  package or a feature slice means editing `structure-check.sh` and this
+  document in the same pull request, so the decision is visible in the diff
+  rather than inferred later from the tree.
 - **Pure core, thin edges.** The simulation is deterministic and I/O-free, so
   its tests are fast, seedable, and meaningful for patch coverage; transports
   (HTTP, WASM) stay too thin to hide bugs.
