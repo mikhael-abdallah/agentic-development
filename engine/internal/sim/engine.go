@@ -14,17 +14,18 @@ import (
 // to avoid.
 var (
 	// ErrUnsupportedKind names a component whose behaviour has not landed.
-	// Caches and databases follow in a later change.
+	// Databases follow in a later change.
 	ErrUnsupportedKind = errors.New("the simulator does not model this component yet")
 	// ErrFanOut refuses a component that sends to several others without being
 	// able to choose between them. Choosing is a load balancer's job; anything
 	// else with two downstream components has no defined answer for where a
 	// request goes, and picking one silently would be an invention.
 	ErrFanOut = errors.New("a component sends to more than one other")
-	// ErrNoTargets is the opposite mistake: a load balancer with nothing
-	// behind it. It would answer every request itself, reporting a design that
-	// balances nothing as though it worked.
-	ErrNoTargets = errors.New("a load balancer has nothing to balance")
+	// ErrNoTargets is the opposite mistake: a component that exists to pass
+	// requests on, with nothing behind it to pass them to. A balancer would
+	// balance nothing and a cache would answer its own misses from a store
+	// that is not there — both reporting a broken design as a working one.
+	ErrNoTargets = errors.New("a component has nothing behind it")
 	// ErrNoEntry catches a design whose load goes nowhere.
 	ErrNoEntry = errors.New("the client sends requests nowhere")
 )
@@ -80,6 +81,13 @@ type station struct {
 	// state round robin keeps between decisions.
 	algorithm model.Algorithm
 	rotation  int
+
+	// answers is whether the component can satisfy a request itself instead
+	// of passing it on, and hitRatio how often it manages to. A cache is the
+	// only component that can; everything else forwards, or is the end of the
+	// line because nothing is behind it.
+	answers  bool
+	hitRatio float64
 
 	busy    int
 	waiting []*request
@@ -179,7 +187,24 @@ func newStation(n model.Node, downstream []string) (*station, error) {
 			servers:  n.Service.Instances,
 			capacity: n.Service.QueueCapacity,
 		}, nil
-	case model.KindClient, model.KindCache, model.KindDatabase:
+	case model.KindCache:
+		// A cache is a lookup, not a queue: it holds every request for the
+		// same moment and holds none of them back. What it decides is not how
+		// long a request waits but whether the request goes any further.
+		if len(downstream) == 0 {
+			return nil, fmt.Errorf("%w: %q sends to nothing", ErrNoTargets, n.ID)
+		}
+		if len(downstream) > 1 {
+			return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
+		}
+		return &station{
+			id:       n.ID,
+			next:     downstream,
+			hold:     n.Cache.HitLatency.Duration(),
+			answers:  true,
+			hitRatio: n.Cache.HitRatio,
+		}, nil
+	case model.KindClient, model.KindDatabase:
 		return nil, fmt.Errorf("%w: %s (%q)", ErrUnsupportedKind, n.Kind, n.ID)
 	}
 	// Unreachable: Validate rejects any kind outside the cases above. The
@@ -308,7 +333,7 @@ func (e *engine) startService(st *station, req *request) {
 // has been waiting longest.
 func (e *engine) finish(id string, req *request) {
 	st := e.stations[id]
-	if len(st.next) == 0 {
+	if len(st.next) == 0 || e.answered(st, req) {
 		e.complete(req)
 	} else {
 		e.admit(e.route(st), req)
@@ -320,6 +345,31 @@ func (e *engine) finish(id string, req *request) {
 	waiting := st.waiting[0]
 	st.waiting = st.waiting[1:]
 	e.startService(st, waiting)
+}
+
+// answered reports whether the component satisfied the request itself, so
+// that nothing behind it ever sees the request.
+//
+// This is the whole point of putting a cache in a design: not that a hit is
+// fast, but that a hit is work the store behind it never does. A cache that
+// forwarded everything and merely answered sooner would leave the database
+// under exactly the load it started with.
+func (e *engine) answered(st *station, req *request) bool {
+	if !st.answers {
+		return false
+	}
+	// A write is never a hit. It has to reach the store behind this, and a
+	// cache that absorbed one would be reporting an acknowledged write that
+	// nothing recorded — which is what the read flag has been carried from
+	// arrival for.
+	//
+	// The draw happens either way, before that is known. It costs one number
+	// and it means two runs that differ only in hit ratio, or only in read
+	// mix, still line up draw for draw: the same requests meet the same luck,
+	// and raising the ratio converts misses to hits rather than rerolling
+	// everything. That is the difference between a comparison and a reroll.
+	hit := e.rng.stream(st.id).Float64() < st.hitRatio
+	return hit && req.read
 }
 
 func (e *engine) complete(req *request) {
