@@ -53,9 +53,9 @@ func TestEverythingHitMeansNothingReachesTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if res.MeanLatency != hitLatency.Duration() {
+	if res.Latency.Mean != hitLatency.Duration() {
 		t.Errorf("mean latency = %v with every read a hit, want exactly the %v lookup",
-			res.MeanLatency, hitLatency.Duration())
+			res.Latency.Mean, hitLatency.Duration())
 	}
 	if res.Completed != res.Arrived {
 		t.Errorf("completed %d of %d arrivals: something queued behind the store",
@@ -77,12 +77,12 @@ func TestAWriteIsNeverAHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if hits != misses {
+	if !same(hits, misses) {
 		t.Errorf("a hit ratio of 1 changed a write-only run:\n got %+v\nwant %+v", hits, misses)
 	}
-	if hits.MeanLatency <= hitLatency.Duration() {
+	if hits.Latency.Mean <= hitLatency.Duration() {
 		t.Errorf("mean latency %v never exceeded the lookup: the writes did not reach the store",
-			hits.MeanLatency)
+			hits.Latency.Mean)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestAMissCostsTheLookupAndNothingMore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if got := charged.MeanLatency - free.MeanLatency; got != lookup.Duration() {
+	if got := charged.Latency.Mean - free.Latency.Mean; got != lookup.Duration() {
 		t.Errorf("a %v lookup moved mean latency by %v", lookup.Duration(), got)
 	}
 	if charged.Arrived != free.Arrived || charged.Dropped != free.Dropped ||
@@ -128,10 +128,10 @@ func TestRaisingTheHitRatioTakesLoadOffTheStore(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run() at hit ratio %g: %v", ratio, err)
 		}
-		latency := int(res.MeanLatency)
+		latency := int(res.Latency.Mean)
 		if previous >= 0 && latency >= previous {
 			t.Errorf("hit ratio %g gave mean latency %v, no better than the ratio below it",
-				ratio, res.MeanLatency)
+				ratio, res.Latency.Mean)
 		}
 		previous = latency
 	}
@@ -169,7 +169,7 @@ func TestACachedDesignStillRepeats(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run() unexpected error on repeat %d: %v", i, err)
 		}
-		if again != first {
+		if !same(again, first) {
 			t.Fatalf("repeat %d differed:\n got %+v\nwant %+v", i, again, first)
 		}
 	}

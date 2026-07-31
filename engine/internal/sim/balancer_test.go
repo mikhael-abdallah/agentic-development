@@ -54,7 +54,7 @@ func TestBalancerOverheadLandsOnEveryRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if got := delayed.MeanLatency - direct.MeanLatency; got != overhead.Duration() {
+	if got := delayed.Latency.Mean - direct.Latency.Mean; got != overhead.Duration() {
 		t.Errorf("a %v balancer overhead moved mean latency by %v", overhead.Duration(), got)
 	}
 	if delayed.Arrived != direct.Arrived || delayed.Dropped != direct.Dropped ||
@@ -111,7 +111,7 @@ func TestABalancedDesignStillRepeats(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Run() unexpected error on repeat %d: %v", i, err)
 				}
-				if again != first {
+				if !same(again, first) {
 					t.Fatalf("repeat %d differed:\n got %+v\nwant %+v", i, again, first)
 				}
 			}

@@ -3,6 +3,7 @@ package sim
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/model"
@@ -213,6 +214,7 @@ func (e *engine) admit(id string, req *request) {
 	if st.capacity > 0 && len(st.waiting) >= st.capacity {
 		if req.arrived >= e.measureFrom {
 			e.result.Dropped++
+			st.dropped++
 		}
 		return
 	}
@@ -220,7 +222,11 @@ func (e *engine) admit(id string, req *request) {
 }
 
 func (e *engine) startService(st *station, server int, req *request) {
+	e.accrue(st)
 	st.slots[server]++
+	if req.arrived >= e.measureFrom {
+		st.served++
+	}
 	hold := st.hold
 	if !req.read {
 		hold = st.holdWrite
@@ -246,8 +252,32 @@ func (e *engine) finish(id string, server int, req *request) {
 	} else {
 		e.admit(e.route(st), req)
 	}
+	e.accrue(st)
 	st.slots[server]--
 	e.startWaiting(st)
+}
+
+// accrue books the connection-time each of a component's servers has spent
+// holding requests since slots last changed.
+//
+// Integrating on change rather than sampling on a timer costs nothing when
+// nothing is happening and is exact when something is: between two changes the
+// occupancy is by definition constant.
+//
+// The interval is clipped to the measurement window at the front — warmup is
+// simulated but not reported — and to the arrival horizon at the back. Past
+// the horizon the run is only draining what it already accepted, and counting
+// that emptying tail would report every component as quieter than it was under
+// the load it was actually asked to carry.
+func (e *engine) accrue(st *station) {
+	from, to := max(st.changed, e.measureFrom), min(e.clock, e.horizon)
+	st.changed = e.clock
+	if to <= from {
+		return
+	}
+	for i, held := range st.slots {
+		st.busy[i] += time.Duration(held) * (to - from)
+	}
 }
 
 // startWaiting hands the connection just freed to the first request in the
@@ -303,13 +333,79 @@ func (e *engine) complete(req *request) {
 func (e *engine) summarise() Result {
 	res := e.result
 	res.Completed = len(e.latencies)
-	if res.Completed == 0 {
-		return res
+	// One last booking per component. The loop stopped on the last event,
+	// which is somewhere in the drain past the horizon, so without this a
+	// component's final stretch of work would never be counted.
+	for _, st := range e.stations {
+		e.accrue(st)
+	}
+	window := e.horizon - e.measureFrom
+	if window > 0 {
+		res.Throughput = float64(res.Completed) / window.Seconds()
+	}
+	res.Nodes = e.nodeStats(window)
+	res.Bottleneck = bottleneck(res.Nodes)
+	res.Latency = latencyOf(e.latencies)
+	return res
+}
+
+// nodeStats reports what each component did, and how close its busiest server
+// came to having no room left.
+func (e *engine) nodeStats(window time.Duration) map[string]NodeStats {
+	nodes := make(map[string]NodeStats, len(e.stations))
+	for id, st := range e.stations {
+		stats := NodeStats{Served: st.served, Dropped: st.dropped}
+		// A component with no pool has no ceiling to be measured against, so
+		// there is no utilization to report rather than a utilization of zero.
+		if st.pool > 0 && window > 0 {
+			capacity := time.Duration(st.pool) * window
+			for _, busy := range st.busy {
+				if used := float64(busy) / float64(capacity); used > stats.Utilization {
+					stats.Utilization = used
+				}
+			}
+		}
+		nodes[id] = stats
+	}
+	return nodes
+}
+
+// bottleneck names the component closest to saturated.
+//
+// Ties are broken by id, which matters more than it looks: two components can
+// both sit at a utilization of 1 in an overloaded design, and picking whichever
+// the map happened to yield would make the answer change between identical
+// runs. A simulator that reports a different bottleneck each time it is asked
+// the same question is worse than one that reports none.
+func bottleneck(nodes map[string]NodeStats) string {
+	worst, highest := "", 0.0
+	for id, stats := range nodes {
+		if stats.Utilization <= 0 {
+			continue
+		}
+		if stats.Utilization > highest || (stats.Utilization == highest && id < worst) {
+			worst, highest = id, stats.Utilization
+		}
+	}
+	return worst
+}
+
+// latencyOf summarises a sample of end-to-end times. It sorts in place: the
+// caller is the engine, finished with the slice.
+func latencyOf(sample []time.Duration) Latency {
+	if len(sample) == 0 {
+		return Latency{}
 	}
 	var total time.Duration
-	for _, l := range e.latencies {
+	for _, l := range sample {
 		total += l
 	}
-	res.MeanLatency = total / time.Duration(res.Completed)
-	return res
+	slices.Sort(sample)
+	return Latency{
+		Mean: total / time.Duration(len(sample)),
+		P50:  percentile(sample, 0.50),
+		P95:  percentile(sample, 0.95),
+		P99:  percentile(sample, 0.99),
+		Max:  sample[len(sample)-1],
+	}
 }

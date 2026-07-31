@@ -2,6 +2,7 @@ package sim_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/model"
@@ -25,6 +26,13 @@ func chain(instances int, meanMs model.Millis, queue int) model.Topology {
 	}
 }
 
+// same reports whether two runs produced the same Result.
+//
+// Result carries a map of per-component statistics, so == no longer compiles
+// on it. What these tests assert is unchanged: every field, including every
+// component's own numbers, has to match.
+func same(a, b sim.Result) bool { return reflect.DeepEqual(a, b) }
+
 func load(rate float64, seed uint64) model.Workload {
 	return model.Workload{
 		RateRPS:        rate,
@@ -47,15 +55,15 @@ func TestRunSimulatesASingleServicePool(t *testing.T) {
 	if res.Completed == 0 {
 		t.Fatal("Run() completed nothing")
 	}
-	if res.MeanLatency <= 0 {
-		t.Errorf("MeanLatency = %v, want a positive duration", res.MeanLatency)
+	if res.Latency.Mean <= 0 {
+		t.Errorf("MeanLatency = %v, want a positive duration", res.Latency.Mean)
 	}
 	// Nothing can leave before it has been served, so end-to-end latency can
 	// never be below the mean service time by much. This catches a clock that
 	// is not advancing at all, which otherwise looks like a very fast design.
-	if res.MeanLatency < 4*model.Millis(1).Duration() {
+	if res.Latency.Mean < 4*model.Millis(1).Duration() {
 		t.Errorf("MeanLatency = %v, want at least roughly the 5ms service time",
-			res.MeanLatency)
+			res.Latency.Mean)
 	}
 }
 
@@ -73,7 +81,7 @@ func TestSameSeedGivesTheSameRun(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run() unexpected error on repeat %d: %v", i, err)
 		}
-		if again != first {
+		if !same(again, first) {
 			t.Fatalf("repeat %d differed from the first run:\n got %+v\nwant %+v",
 				i, again, first)
 		}
@@ -90,7 +98,7 @@ func TestDifferentSeedsGiveDifferentRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if a == b {
+	if same(a, b) {
 		t.Error("two seeds produced an identical run — the seed is not reaching the draws")
 	}
 }
@@ -108,9 +116,9 @@ func TestLatencyRisesWithLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if busy.MeanLatency <= quiet.MeanLatency {
+	if busy.Latency.Mean <= quiet.Latency.Mean {
 		t.Errorf("mean latency at 180 rps (%v) did not exceed 50 rps (%v) on one server",
-			busy.MeanLatency, quiet.MeanLatency)
+			busy.Latency.Mean, quiet.Latency.Mean)
 	}
 }
 

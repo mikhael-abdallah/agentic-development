@@ -39,9 +39,9 @@ func TestReplicasCarryReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if spread.MeanLatency >= alone.MeanLatency {
+	if spread.Latency.Mean >= alone.Latency.Mean {
 		t.Errorf("three replicas gave mean latency %v against %v for the primary alone",
-			spread.MeanLatency, alone.MeanLatency)
+			spread.Latency.Mean, alone.Latency.Mean)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestReplicasDoNothingForWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if spread != alone {
+	if !same(spread, alone) {
 		t.Errorf("six replicas changed a write-only run:\n got %+v\nwant %+v", spread, alone)
 	}
 }
@@ -84,9 +84,9 @@ func TestReadsAndWritesCostTheirOwnTime(t *testing.T) {
 	}
 	// Well under the forty-fold ratio of the means, so this is testing that
 	// the two draws are separate rather than that a light load is unqueued.
-	if slow.MeanLatency < 10*quick.MeanLatency {
+	if slow.Latency.Mean < 10*quick.Latency.Mean {
 		t.Errorf("writes averaged %v against reads at %v: the means are not being told apart",
-			slow.MeanLatency, quick.MeanLatency)
+			slow.Latency.Mean, quick.Latency.Mean)
 	}
 }
 
@@ -103,9 +103,9 @@ func TestThePoolIsTheCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if wide.MeanLatency >= narrow.MeanLatency {
+	if wide.Latency.Mean >= narrow.Latency.Mean {
 		t.Errorf("sixteen connections gave mean latency %v against one connection's %v",
-			wide.MeanLatency, narrow.MeanLatency)
+			wide.Latency.Mean, narrow.Latency.Mean)
 	}
 }
 
@@ -126,7 +126,7 @@ func TestAStoredDesignStillRepeats(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run() unexpected error on repeat %d: %v", i, err)
 		}
-		if again != first {
+		if !same(again, first) {
 			t.Fatalf("repeat %d differed:\n got %+v\nwant %+v", i, again, first)
 		}
 	}

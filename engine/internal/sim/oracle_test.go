@@ -99,7 +99,7 @@ func simulated(t *testing.T, utilization float64) time.Duration {
 			t.Fatalf("an unbounded queue dropped %d requests: not the M/M/1 the closed form describes",
 				res.Dropped)
 		}
-		total += res.MeanLatency
+		total += res.Latency.Mean
 	}
 	return total / oracleReplications
 }
