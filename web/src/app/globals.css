@@ -210,3 +210,55 @@ body {
   font-size: 0.72rem;
   color: var(--muted);
 }
+
+/* --- inspector ------------------------------------------------------- */
+
+.inspector {
+  width: 17rem;
+  flex: none;
+  padding: 1rem;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.inspector__title {
+  margin: 0 0 0.6rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.inspector__field {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.9rem;
+}
+
+.inspector__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.inspector__input {
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.inspector__input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.inspector__hint {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
