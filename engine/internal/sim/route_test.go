@@ -21,7 +21,7 @@ func balancer(algorithm model.Algorithm, loads ...int) (*engine, *station) {
 	lb := &station{id: "lb", algorithm: algorithm}
 	for i, load := range loads {
 		id := fmt.Sprintf("s%d", i)
-		e.stations[id] = &station{id: id, busy: load}
+		e.stations[id] = &station{id: id, slots: []int{load}}
 		lb.next = append(lb.next, id)
 	}
 	e.stations[lb.id] = lb

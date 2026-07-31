@@ -167,19 +167,6 @@ func TestRunRejectsWhatItCannotSimulate(t *testing.T) {
 		build func() model.Topology
 		want  error
 	}{
-		{"a component whose behaviour has not landed", func() model.Topology {
-			tp := chain(1, 5, 0)
-			tp.Nodes = append(tp.Nodes, model.Node{
-				ID:   "db",
-				Kind: model.KindDatabase,
-				Database: &model.DatabaseParams{
-					Replicas: 1, MeanRead: 2, MeanWrite: 8, PoolSize: 4,
-				},
-			})
-			tp.Edges = append(tp.Edges, model.Edge{From: "api", To: "db"})
-			return tp
-		}, sim.ErrUnsupportedKind},
-
 		{"a component that sends to two others", func() model.Topology {
 			tp := chain(1, 5, 0)
 			tp.Nodes = append(tp.Nodes,
