@@ -163,3 +163,89 @@ func TestAddedDurationsMayBeZero(t *testing.T) {
 		})
 	}
 }
+
+// Millis and Duration have to be inverses. They are the only two places the
+// unit is decided, and a mismatch would be invisible: a latency reported a
+// thousand times too large reads as a working system that is very slow.
+func TestMillisRoundTripsThroughDuration(t *testing.T) {
+	t.Parallel()
+	for _, ms := range []model.Millis{0, 0.5, 1, 5, 250, 60_000} {
+		if got := model.MillisOf(ms.Duration()); got != ms {
+			t.Errorf("MillisOf(Millis(%v).Duration()) = %v", ms, got)
+		}
+	}
+	if got := model.MillisOf(1500 * time.Microsecond); got != 1.5 {
+		t.Errorf("MillisOf(1.5ms) = %v, want 1.5", got)
+	}
+}
+
+// A duration longer than the clock can express overflows to a negative one,
+// and nothing downstream treats that as an error: a negative run length ends
+// before it starts and reports a successful simulation of nothing, and a
+// negative service time schedules completions into the past. Every parameter
+// the simulation turns into a Duration is checked, not just the one that was
+// noticed.
+func TestADurationTooLongForTheClockIsRejected(t *testing.T) {
+	t.Parallel()
+	// Past math.MaxInt64 nanoseconds, which is about 292 years.
+	const tooLong model.Millis = 1e13
+	tests := []struct {
+		name string
+		node model.Node
+	}{
+		{"a balancer overhead", model.Node{
+			ID: "lb", Kind: model.KindLoadBalancer,
+			LoadBalancer: &model.LoadBalancerParams{
+				Algorithm: model.RoundRobin, Overhead: tooLong,
+			},
+		}},
+		{"a service time", model.Node{
+			ID: "api", Kind: model.KindService,
+			Service: &model.ServiceParams{Instances: 1, MeanService: tooLong},
+		}},
+		{"a cache lookup", model.Node{
+			ID: "cache", Kind: model.KindCache,
+			Cache: &model.CacheParams{HitRatio: 0.5, HitLatency: tooLong},
+		}},
+		{"a read time", model.Node{
+			ID: "db", Kind: model.KindDatabase,
+			Database: &model.DatabaseParams{
+				MeanRead: tooLong, MeanWrite: 1, PoolSize: 1,
+			},
+		}},
+		{"a write time", model.Node{
+			ID: "db", Kind: model.KindDatabase,
+			Database: &model.DatabaseParams{
+				MeanRead: 1, MeanWrite: tooLong, PoolSize: 1,
+			},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			design := model.Topology{
+				Nodes: []model.Node{{ID: "client", Kind: model.KindClient}, tt.node},
+				Edges: []model.Edge{{From: "client", To: tt.node.ID}},
+			}
+			if err := design.Validate(); !errors.Is(err, model.ErrParamRange) {
+				t.Errorf("Validate() with %s of %g ms = %v, want ErrParamRange",
+					tt.name, float64(tooLong), err)
+			}
+		})
+	}
+}
+
+func TestARunLongerThanTheClockIsRejected(t *testing.T) {
+	t.Parallel()
+	w := model.Workload{
+		RateRPS: 1, ReadFraction: 1, Duration: 1e13, Seed: 1, WarmupFraction: 0,
+	}
+	if err := w.Validate(); !errors.Is(err, model.ErrWorkload) {
+		t.Errorf("Validate() with a 317-year run = %v, want ErrWorkload", err)
+	}
+	// A run of a length the clock can hold is still fine.
+	w.Duration = 1e9
+	if err := w.Validate(); err != nil {
+		t.Errorf("Validate() with an eleven-day run = %v, want nil", err)
+	}
+}
