@@ -7,7 +7,7 @@ import {
   LOAD_BALANCER_FIELDS,
   SERVICE_FIELDS,
 } from "@/features/inspector/fields";
-import { algorithmLabel, kindBlurb, kindLabel } from "@/lib/describe";
+import { type Contract, algorithmLabel, kindBlurb, kindLabel } from "@/lib/describe";
 import {
   ALGORITHMS,
   type Algorithm,
@@ -116,8 +116,45 @@ function Params({ node, onChange }: ParamsProps) {
   }
 }
 
+interface WiringProps {
+  readonly title: string;
+  readonly empty: string;
+  readonly contracts: Contract[];
+}
+
+/**
+ * One side of a component's wiring, and what crosses it.
+ *
+ * Shown even when there is nothing on that side: "nothing sends to this yet"
+ * is the sentence someone needs when their design will not run, and an absent
+ * list says the same thing only to whoever already suspected it.
+ */
+function Wiring({ title, empty, contracts }: WiringProps) {
+  return (
+    <div className="wiring">
+      <p className="wiring__title">{title}</p>
+      {contracts.length === 0 ? (
+        <p className="field__hint">{empty}</p>
+      ) : (
+        <ul className="wiring__list">
+          {contracts.map((contract) => (
+            <li key={contract.id} className="wiring__item">
+              <span className="wiring__other">{contract.other}</span>
+              <span className="wiring__carries">{contract.carries}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 interface InspectorProps {
   readonly node: DesignNode | undefined;
+  /** What reaches this component and what it passes on. Derived from the
+   *  design's own edges rather than from the kind, because what a database is
+   *  handed depends on whether a cache sits in front of it. */
+  readonly wiring: { incoming: Contract[]; outgoing: Contract[] };
   readonly onChange: (node: DesignNode) => void;
   readonly onRemove: (id: string) => void;
   /** Why this component cannot be removed, or null if it can. Computed by
@@ -135,7 +172,7 @@ interface InspectorProps {
  * and an arrival rate look like two settings of the same thing — one of which
  * would silently belong to a component nobody remembers selecting.
  */
-export function Inspector({ node, onChange, onRemove, cannotRemove }: InspectorProps) {
+export function Inspector({ node, wiring, onChange, onRemove, cannotRemove }: InspectorProps) {
   return (
     <aside className="panel inspector" aria-label="Component settings" data-kind={node?.kind}>
       <p className="panel__scope">Selected component</p>
@@ -163,6 +200,16 @@ export function Inspector({ node, onChange, onRemove, cannotRemove }: InspectorP
             )}
           </Row>
           <Params node={node} onChange={onChange} />
+          <Wiring
+            title="Receives"
+            empty="Nothing sends to this yet — it will not be reached by a run."
+            contracts={wiring.incoming}
+          />
+          <Wiring
+            title="Sends on"
+            empty="Nothing behind it. Requests that reach here end here."
+            contracts={wiring.outgoing}
+          />
           {cannotRemove === null ? (
             <button
               type="button"

@@ -291,6 +291,57 @@ body {
   color: var(--muted);
 }
 
+/* What reaches a component and what it passes on. An arrow between two boxes
+   says they are connected and nothing about what connects them, which is what
+   makes a design read as a picture rather than as a system. */
+.wiring {
+  margin: 0.9rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.wiring__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.wiring__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.wiring__item {
+  display: grid;
+  gap: 0.05rem;
+}
+
+.wiring__other {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.wiring__carries {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* React Flow draws edge labels into an SVG-adjacent layer of its own; these
+   only set the type, so a label reads as a caption rather than as a component. */
+.react-flow__edge-text {
+  font-size: 9px;
+  fill: var(--muted);
+}
+
+.react-flow__edge-textbg {
+  fill: var(--page);
+}
+
 .inspector__remove {
   width: 100%;
   margin-top: 0.9rem;

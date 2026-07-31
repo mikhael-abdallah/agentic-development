@@ -58,7 +58,7 @@ describe("toFlowNodes", () => {
 describe("toFlowEdges", () => {
   it("carries both endpoints, so nothing has to parse an id to find them", () => {
     const edges = toFlowEdges(chain().topology);
-    expect(edges).toEqual([
+    expect(edges.map(({ id, source, target }) => ({ id, source, target }))).toEqual([
       { id: edgeId("client", "service"), source: "client", target: "service" },
       { id: edgeId("service", "database"), source: "service", target: "database" },
     ]);
@@ -170,5 +170,32 @@ describe("toFlowNodes deletability", () => {
     const flow = toFlowNodes(design);
     expect(flow.find((node) => node.id === "client")?.deletable).toBe(false);
     expect(flow.find((node) => node.id === "cache")?.deletable).toBe(true);
+  });
+});
+
+// An arrow between two boxes says the two are connected and nothing about what
+// connects them, which is what made a design read as a picture rather than as
+// a system.
+describe("toFlowEdges labelling", () => {
+  it("says what crosses each connection", () => {
+    const labels = toFlowEdges(chain().topology).map((edge) => edge.label);
+    expect(labels).toEqual(["every request", "every request"]);
+  });
+
+  // The one kind that forwards less than it receives, and the reason a cache
+  // is worth drawing at all.
+  it("says a cache passes on only what it could not answer", () => {
+    let design = addNode(emptyDesign(), "service", SOMEWHERE);
+    design = addNode(design, "cache", SOMEWHERE);
+    design = addNode(design, "database", SOMEWHERE);
+    design = connect(design, "client", "service");
+    design = connect(design, "service", "cache");
+    design = connect(design, "cache", "database");
+    expect(design.topology.edges).toHaveLength(3);
+    const carried = new Map(
+      toFlowEdges(design.topology).map((edge) => [edge.id, edge.label]),
+    );
+    expect(carried.get(edgeId("cache", "database"))).toBe("misses, and every write");
+    expect(carried.get(edgeId("service", "cache"))).toBe("every request");
   });
 });
