@@ -8,23 +8,36 @@ import (
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/sim"
 )
 
-// cached is a client, a cache, and one slow store behind it. The store is a
-// service rather than a database because databases land in the next change,
-// and what a cache does to the thing behind it does not depend on which it is.
+// cached is a client, a service, a cache, and one slow store behind it.
+//
+// The store was a service when this was written, on the grounds that what a
+// cache does to the thing behind it does not depend on which it is. It is a
+// database now because a cache does not call a service — the model says so
+// since designs gained rules about which kinds may call which — and because a
+// store behind a cache is a database in every design anyone draws. Reads and
+// writes cost the same here so the substitution changes no measurement: a
+// single connection serves them, as a single instance did.
 func cached(ratio float64, hitLatency, storeMean model.Millis) model.Topology {
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			frontend(),
 			{ID: "cache", Kind: model.KindCache, Cache: &model.CacheParams{
 				HitRatio:   ratio,
 				HitLatency: hitLatency,
 			}},
-			{ID: "store", Kind: model.KindService, Service: &model.ServiceParams{
-				Instances:   1,
-				MeanService: storeMean,
+			{ID: "store", Kind: model.KindDatabase, Database: &model.DatabaseParams{
+				Replicas:  0,
+				MeanRead:  storeMean,
+				MeanWrite: storeMean,
+				PoolSize:  1,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "cache"}, {From: "cache", To: "store"}},
+		Edges: []model.Edge{
+			{From: "client", To: "front"},
+			{From: "front", To: "cache"},
+			{From: "cache", To: "store"},
+		},
 	}
 }
 
@@ -41,10 +54,16 @@ func writes(rate float64, seed uint64) model.Workload {
 	return w
 }
 
-// A cache that answers everything is the whole design: nothing reaches the
-// store, so every request costs exactly one lookup and no queue ever forms
-// behind it. An equality, because a hit latency is added rather than drawn —
-// a mean that came out at anything else would mean something got through.
+// A cache that answers everything answers everything: nothing reaches the
+// store, and no queue ever forms behind it.
+//
+// This used to assert that mean latency was exactly the hit latency, on the
+// grounds that a hit is added rather than drawn, so any other number meant
+// something had got through. That equality is gone — a design needs a service
+// between its client and its cache, and a service time is drawn — so the claim
+// is made directly instead, against the store's own counter. Directly is
+// better: it says what the test is about rather than inferring it from a
+// number that would also move if anything else changed.
 func TestEverythingHitMeansNothingReachesTheStore(t *testing.T) {
 	t.Parallel()
 	const hitLatency model.Millis = 2
@@ -53,8 +72,13 @@ func TestEverythingHitMeansNothingReachesTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if res.Latency.Mean != hitLatency.Duration() {
-		t.Errorf("mean latency = %v with every read a hit, want exactly the %v lookup",
+	if served := res.Nodes["store"].Served; served != 0 {
+		t.Errorf("the store served %d requests with every read a hit, want none", served)
+	}
+	// And still paced by the lookup rather than by the store: the front-end
+	// hop averages a thousandth of a millisecond, the store a hundred.
+	if res.Latency.Mean > (hitLatency + 1).Duration() {
+		t.Errorf("mean latency = %v with every read a hit, want about the %v lookup",
 			res.Latency.Mean, hitLatency.Duration())
 	}
 	if res.Completed != res.Arrived {
@@ -144,11 +168,12 @@ func TestACacheInFrontOfNothingIsRefused(t *testing.T) {
 	design := model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			frontend(),
 			{ID: "cache", Kind: model.KindCache, Cache: &model.CacheParams{
 				HitRatio: 0.9, HitLatency: 1,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "cache"}},
+		Edges: []model.Edge{{From: "client", To: "front"}, {From: "front", To: "cache"}},
 	}
 	if _, err := sim.Run(design, load(100, 1)); !errors.Is(err, sim.ErrNoTargets) {
 		t.Errorf("Run() on a cache with nothing behind it = %v, want ErrNoTargets", err)

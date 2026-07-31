@@ -8,13 +8,14 @@ import (
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/sim"
 )
 
-// stored is a client in front of a database, with nothing in between: what a
-// database does under load is the subject, and a service or cache ahead of it
-// would only be deciding how much of that load arrives.
+// stored is a database behind the cheapest service that can stand in front of
+// one: what a database does under load is the subject, and `frontend` is sized
+// so that it decides nothing about the answer.
 func stored(replicas, pool int, meanRead, meanWrite model.Millis) model.Topology {
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			frontend(),
 			{ID: "db", Kind: model.KindDatabase, Database: &model.DatabaseParams{
 				Replicas:  replicas,
 				MeanRead:  meanRead,
@@ -22,7 +23,7 @@ func stored(replicas, pool int, meanRead, meanWrite model.Millis) model.Topology
 				PoolSize:  pool,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "db"}},
+		Edges: []model.Edge{{From: "client", To: "front"}, {From: "front", To: "db"}},
 	}
 }
 
@@ -132,17 +133,23 @@ func TestAStoredDesignStillRepeats(t *testing.T) {
 	}
 }
 
-func TestADatabaseSendingToTwoComponentsIsRefused(t *testing.T) {
+// Spreading requests over several components is what a load balancer is for.
+// Anything else that does it has no rule for choosing, and the engine refuses
+// rather than picking one.
+//
+// The source is a service sending to two databases. It used to be a database
+// sending to two services, which the model now refuses earlier and for a
+// different reason — a database calls nothing — so the case had to be rebuilt
+// out of a pair of kinds that may legally connect.
+func TestAComponentSendingToTwoOthersIsRefused(t *testing.T) {
 	t.Parallel()
 	design := stored(1, 2, 5, 10)
-	for _, id := range []string{"a", "b"} {
-		design.Nodes = append(design.Nodes, model.Node{
-			ID: id, Kind: model.KindService,
-			Service: &model.ServiceParams{Instances: 1, MeanService: 1},
-		})
-		design.Edges = append(design.Edges, model.Edge{From: "db", To: id})
-	}
+	design.Nodes = append(design.Nodes, model.Node{
+		ID: "other", Kind: model.KindDatabase,
+		Database: &model.DatabaseParams{Replicas: 0, MeanRead: 5, MeanWrite: 10, PoolSize: 2},
+	})
+	design.Edges = append(design.Edges, model.Edge{From: "front", To: "other"})
 	if _, err := sim.Run(design, load(50, 1)); !errors.Is(err, sim.ErrFanOut) {
-		t.Errorf("Run() on a database sending to two components = %v, want ErrFanOut", err)
+		t.Errorf("Run() on a service sending to two components = %v, want ErrFanOut", err)
 	}
 }

@@ -19,6 +19,7 @@ var (
 	ErrEdgeEndpoint   = errors.New("edge refers to a component that does not exist")
 	ErrEdgeShape      = errors.New("edge is a self-loop or a duplicate")
 	ErrClientInbound  = errors.New("the client cannot receive traffic")
+	ErrEdgeKinds      = errors.New("this component cannot call that one")
 	ErrUnreachable    = errors.New("component cannot be reached from the client")
 	ErrCycle          = errors.New("requests would flow in a circle")
 	ErrWorkload       = errors.New("invalid workload")
@@ -105,11 +106,12 @@ func (t Topology) validateNodes() error {
 func (t Topology) validateEdges(index map[string]Node) error {
 	seen := make(map[Edge]bool, len(t.Edges))
 	for _, e := range t.Edges {
-		if _, ok := index[e.From]; !ok {
+		from, ok := index[e.From]
+		if !ok {
 			return fmt.Errorf("%w: %q", ErrEdgeEndpoint, e.From)
 		}
-		to, ok := index[e.To]
-		if !ok {
+		to, found := index[e.To]
+		if !found {
 			return fmt.Errorf("%w: %q", ErrEdgeEndpoint, e.To)
 		}
 		if e.From == e.To {
@@ -121,6 +123,14 @@ func (t Topology) validateEdges(index map[string]Node) error {
 		seen[e] = true
 		if to.Kind == KindClient {
 			return fmt.Errorf("%w: %q sends to it", ErrClientInbound, e.From)
+		}
+		// Last, because every check above says something more specific about
+		// the same edge. This is the one that catches a design which is
+		// well-formed and still not a system: a client wired straight to a
+		// database, a load balancer spreading requests over storage.
+		if !from.Kind.MayCall(to.Kind) {
+			return fmt.Errorf("%w: %s %q cannot call %s %q",
+				ErrEdgeKinds, from.Kind, e.From, to.Kind, e.To)
 		}
 	}
 	return nil

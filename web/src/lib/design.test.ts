@@ -137,9 +137,10 @@ describe("whyNotConnect", () => {
     ["a component calling itself", "service", "service", /cannot call itself/],
     ["an edge to a component that is not there", "service", "ghost", /not in this design/],
     ["an edge from a component that is not there", "ghost", "service", /not in this design/],
-    ["traffic back to the client", "service", "client", /nothing sends traffic to it/],
+    ["traffic back to the client", "service", "client", /[Nn]othing sends traffic back to it/],
     ["a connection already drawn", "client", "service", /already there/],
-    ["a circle", "database", "service", /circle/],
+    ["a client reaching past its service", "client", "database", /Put a service in front/],
+    ["a database calling back", "database", "service", /does not call anything/],
   ];
 
   for (const [name, from, to, reason] of cases) {
@@ -149,7 +150,8 @@ describe("whyNotConnect", () => {
   }
 
   it("allows an edge that is none of those", () => {
-    expect(whyNotConnect(chain(), "client", "database")).toBeNull();
+    const design = addNode(chain(), "cache", SOMEWHERE);
+    expect(whyNotConnect(design, "service", "cache")).toBeNull();
   });
 
   // A diamond reaches the same component down two paths. The walk has to stop
@@ -158,24 +160,30 @@ describe("whyNotConnect", () => {
   it("allows an edge into a design that fans out and back in", () => {
     let design = addNode(emptyDesign(), "loadBalancer", SOMEWHERE);
     design = addNode(design, "service", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
     design = addNode(design, "cache", SOMEWHERE);
     design = addNode(design, "database", SOMEWHERE);
-    design = addNode(design, "service", SOMEWHERE);
     design = connect(design, "client", "loadBalancer");
     design = connect(design, "loadBalancer", "service");
-    design = connect(design, "loadBalancer", "cache");
-    design = connect(design, "service", "database");
+    design = connect(design, "loadBalancer", "service-2");
+    design = connect(design, "service", "cache");
     design = connect(design, "cache", "database");
     expect(edgeList(design)).toHaveLength(5);
-    expect(whyNotConnect(design, "service-2", "loadBalancer")).toBeNull();
+    expect(whyNotConnect(design, "service-2", "cache")).toBeNull();
   });
 
   // The cycle check follows the whole chain, not just the edge in front of it.
+  // Built out of services, because a circle needs a back edge and the only
+  // kind that may legally call its own upstream is a service.
   it("refuses a circle closed through a longer path", () => {
-    let design = addNode(chain(), "cache", SOMEWHERE);
-    design = connect(design, "database", "cache");
-    expect(whyNotConnect(design, "cache", "client")).toMatch(/nothing sends traffic to it/);
-    expect(whyNotConnect(design, "cache", "service")).toMatch(/circle/);
+    let design = addNode(emptyDesign(), "service", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
+    design = connect(design, "client", "service");
+    design = connect(design, "service", "service-2");
+    design = connect(design, "service-2", "service-3");
+    expect(edgeList(design)).toHaveLength(3);
+    expect(whyNotConnect(design, "service-3", "service")).toMatch(/circle/);
   });
 });
 
@@ -211,22 +219,29 @@ describe("layoutOf", () => {
   it("stacks components of the same layer rather than overlapping them", () => {
     let design = emptyDesign();
     design = addNode(design, "service", SOMEWHERE);
-    design = addNode(design, "cache", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
     design = connect(design, "client", "service");
-    design = connect(design, "client", "cache");
+    design = connect(design, "client", "service-2");
+    expect(edgeList(design)).toHaveLength(2);
     const positions = layoutOf(design.topology);
-    expect(positions.get("service")?.x).toBe(positions.get("cache")?.x);
-    expect(positions.get("service")?.y).not.toBe(positions.get("cache")?.y);
+    expect(positions.get("service")?.x).toBe(positions.get("service-2")?.x);
+    expect(positions.get("service")?.y).not.toBe(positions.get("service-2")?.y);
   });
 
   // Longest path, not shortest: a component reached both directly and through
   // a chain belongs after the chain, or it lands on top of what feeds it.
   it("places a component after the longest path that reaches it", () => {
-    let design = chain();
-    design = connect(design, "client", "database");
+    let design = addNode(emptyDesign(), "service", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
+    design = connect(design, "client", "service");
+    design = connect(design, "client", "service-2");
+    design = connect(design, "service", "service-2");
+    // Asserted, because every edge above is one `connect` could refuse — and a
+    // refused edge would leave this test passing on a design it never built.
+    expect(edgeList(design)).toHaveLength(3);
     const positions = layoutOf(design.topology);
     const x = (id: string) => positions.get(id)?.x ?? 0;
-    expect(x("database")).toBeGreaterThan(x("service"));
+    expect(x("service-2")).toBeGreaterThan(x("service"));
   });
 
   it("gives every component a position", () => {
@@ -334,8 +349,11 @@ describe("componentSignature", () => {
   });
 
   it("does not change when a component is only connected", () => {
-    const design = addNode(emptyDesign(), "cache", SOMEWHERE);
-    const linked = connect(design, "client", "cache");
+    const design = addNode(emptyDesign(), "service", SOMEWHERE);
+    const linked = connect(design, "client", "service");
+    // Asserted, because a refused edge would leave this passing on a design
+    // nothing was connected in.
+    expect(linked.topology.edges).toHaveLength(1);
     expect(componentSignature(linked.topology)).toBe(componentSignature(design.topology));
   });
 });

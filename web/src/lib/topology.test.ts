@@ -10,6 +10,7 @@ import {
   NODE_FIELDS,
   NODE_KINDS,
   type NodeKind,
+  whyNotCall,
   PARAMS_KEY,
   PARAM_FIELDS,
   SCENARIO_FIELDS,
@@ -204,5 +205,77 @@ describe("defaultWorkload", () => {
 
   it("declares every field the engine expects", () => {
     expect(sortedKeys(defaultWorkload())).toEqual(sortedKeys(WORKLOAD_FIELDS));
+  });
+});
+
+// Mirrors NodeKind.Calls in engine/internal/model/kind.go. There is no shared
+// file to check the two against, so what is checked here is the shape of the
+// rule — which pairs are refused and that a refusal always says something —
+// and the shipped scenario below is checked against it edge by edge, which is
+// what would catch this side becoming stricter than the engine for a design
+// the engine actually ships.
+describe("whyNotCall", () => {
+  const refused: [NodeKind, NodeKind][] = [
+    ["client", "cache"],
+    ["client", "database"],
+    ["loadBalancer", "cache"],
+    ["loadBalancer", "database"],
+    ["cache", "loadBalancer"],
+    ["cache", "service"],
+    ["database", "loadBalancer"],
+    ["database", "service"],
+    ["database", "cache"],
+    ["database", "database"],
+    ["service", "client"],
+    ["loadBalancer", "client"],
+  ];
+
+  const allowed: [NodeKind, NodeKind][] = [
+    ["client", "loadBalancer"],
+    ["client", "service"],
+    ["loadBalancer", "loadBalancer"],
+    ["loadBalancer", "service"],
+    ["service", "loadBalancer"],
+    ["service", "service"],
+    ["service", "cache"],
+    ["service", "database"],
+    ["cache", "cache"],
+    ["cache", "database"],
+  ];
+
+  for (const [from, to] of refused) {
+    it(`refuses ${from} calling ${to}`, () => {
+      const reason = whyNotCall(from, to);
+      expect(reason).not.toBeNull();
+      // A refusal nobody can act on is half a rule. Every sentence is a
+      // sentence: it ends, and it is longer than a label.
+      expect(reason?.length).toBeGreaterThan(20);
+      expect(reason?.endsWith(".")).toBe(true);
+    });
+  }
+
+  for (const [from, to] of allowed) {
+    it(`allows ${from} calling ${to}`, () => {
+      expect(whyNotCall(from, to)).toBeNull();
+    });
+  }
+
+  it("has an answer for every pair of kinds in the contract", () => {
+    const missing: string[] = [];
+    for (const from of NODE_KINDS) {
+      for (const to of NODE_KINDS) {
+        const reason = whyNotCall(from, to);
+        if (reason !== null && reason.trim() === "") {
+          missing.push(`${from}->${to}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  // Nothing may send traffic to the client, whatever it is.
+  it("refuses every kind calling the client", () => {
+    const allowedIntoClient = NODE_KINDS.filter((kind) => whyNotCall(kind, "client") === null);
+    expect(allowedIntoClient).toEqual([]);
   });
 });

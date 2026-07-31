@@ -165,9 +165,54 @@ func TestValidateRejects(t *testing.T) {
 			tp.Nodes[4].Database.MeanRead = 0
 		}, model.ErrParamRange},
 
+		// Two services, not the database-to-service edge this used to use:
+		// edges are checked before cycles, so a loop drawn out of kinds that
+		// may not connect never reaches the cycle check.
 		{"requests flowing in a circle", func(tp *model.Topology) {
-			tp.Edges = append(tp.Edges, model.Edge{From: "db", To: "api"})
+			tp.Nodes = append(tp.Nodes, model.Node{
+				ID:      "peer",
+				Kind:    model.KindService,
+				Service: &model.ServiceParams{Instances: 1, MeanService: 1},
+			})
+			tp.Edges = append(tp.Edges,
+				model.Edge{From: "api", To: "peer"},
+				model.Edge{From: "peer", To: "api"},
+			)
 		}, model.ErrCycle},
+
+		// A design can be well-formed and still not be a system. These are
+		// the ones a canvas makes easy to draw: every id resolves, nothing
+		// loops, and the result is something nobody deploys.
+		{"a client wired straight to a database", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "client", To: "db"})
+		}, model.ErrEdgeKinds},
+
+		{"a client reading a cache itself", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "client", To: "cache"})
+		}, model.ErrEdgeKinds},
+
+		{"a load balancer spreading requests over storage", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "lb", To: "db"})
+		}, model.ErrEdgeKinds},
+
+		{"a database calling a service back", func(tp *model.Topology) {
+			tp.Nodes = append(tp.Nodes, model.Node{
+				ID:      "worker",
+				Kind:    model.KindService,
+				Service: &model.ServiceParams{Instances: 1, MeanService: 1},
+			})
+			tp.Edges = append(tp.Edges,
+				model.Edge{From: "api", To: "worker"},
+				model.Edge{From: "db", To: "worker"},
+			)
+		}, model.ErrEdgeKinds},
+
+		// Reported as the wrong pair of kinds rather than as a circle: edges
+		// are checked before cycles, and "a cache does not call a service" is
+		// the more useful of the two things wrong with it.
+		{"a cache calling a service", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "cache", To: "api"})
+		}, model.ErrEdgeKinds},
 	}
 
 	for _, tt := range tests {
@@ -247,6 +292,89 @@ func TestJSONOmitsParametersOfOtherKinds(t *testing.T) {
 	for _, absent := range []string{"service", "database", "loadBalancer"} {
 		if strings.Contains(body, `"`+absent+`"`) {
 			t.Errorf("the cache node encoded %s parameters it does not have: %s", absent, body)
+		}
+	}
+}
+
+// The permissive half of the rule. Refusing too much is as wrong as refusing
+// too little, and it fails in a way nobody reports: the design someone wanted
+// to draw simply cannot be drawn, with a sentence explaining why they are
+// wrong about their own system.
+func TestValidateAcceptsDesignsThatAreOrdinary(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		edit func(*model.Topology)
+	}{
+		{"a service calling another service", func(tp *model.Topology) {
+			tp.Nodes = append(tp.Nodes, model.Node{
+				ID:      "worker",
+				Kind:    model.KindService,
+				Service: &model.ServiceParams{Instances: 1, MeanService: 1},
+			})
+			tp.Edges = append(tp.Edges, model.Edge{From: "api", To: "worker"})
+		}},
+		{"a tier of load balancers behind another", func(tp *model.Topology) {
+			tp.Nodes = append(tp.Nodes, model.Node{
+				ID:           "inner",
+				Kind:         model.KindLoadBalancer,
+				LoadBalancer: &model.LoadBalancerParams{Algorithm: model.RoundRobin, Overhead: 1},
+			})
+			tp.Edges = append(tp.Edges,
+				model.Edge{From: "lb", To: "inner"},
+				model.Edge{From: "inner", To: "api"},
+			)
+		}},
+		{"a near cache in front of a remote one", func(tp *model.Topology) {
+			tp.Nodes = append(tp.Nodes, model.Node{
+				ID:    "remote",
+				Kind:  model.KindCache,
+				Cache: &model.CacheParams{HitRatio: 0.5, HitLatency: 2},
+			})
+			tp.Edges = append(tp.Edges,
+				model.Edge{From: "cache", To: "remote"},
+				model.Edge{From: "remote", To: "db"},
+			)
+		}},
+		{"a service reading the database without a cache", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "api", To: "db"})
+		}},
+		{"a client talking straight to a service", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "client", To: "api"})
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tp := reference()
+			tt.edit(&tp)
+			if err := tp.Validate(); err != nil {
+				t.Errorf("Validate() on %s = %v, want it accepted", tt.name, err)
+			}
+		})
+	}
+}
+
+// A kind that calls nothing and a kind nothing calls are both real answers, so
+// the table cannot be checked by asking whether every entry is non-empty. What
+// it can be checked for is naming a kind that does not exist, which is how a
+// renamed constant would quietly empty a row.
+func TestEveryKindCanBeCalledExceptTheClient(t *testing.T) {
+	t.Parallel()
+	called := map[model.NodeKind]bool{}
+	for _, from := range model.Kinds() {
+		for _, to := range from.Calls() {
+			if !to.Valid() {
+				t.Errorf("%s may call %q, which is not a kind", from, to)
+			}
+			called[to] = true
+		}
+	}
+	for _, kind := range model.Kinds() {
+		want := kind != model.KindClient
+		if called[kind] != want {
+			t.Errorf("something calls %s = %v, want %v", kind, called[kind], want)
 		}
 	}
 }

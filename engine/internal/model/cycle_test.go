@@ -74,10 +74,19 @@ func TestUnreachableCyclesAreReportedAsCycles(t *testing.T) {
 // The engine walks this graph once per request, so the guarantee it needs is
 // not "usually a DAG" but "a validated topology is a DAG". This is the case
 // that would hang a traversal with no cycle guard of its own.
+// Two services calling each other, rather than the cache-to-service loop this
+// used to draw: edges are checked before cycles, so a loop built out of a pair
+// of kinds that may not connect is reported as the wrong kinds and never
+// reaches the cycle check at all. A loop worth this test is one where the only
+// thing wrong is the loop.
 func TestTwoComponentLoopIsRejected(t *testing.T) {
 	t.Parallel()
 	tp := reference()
-	tp.Edges = append(tp.Edges, model.Edge{From: "cache", To: "api"})
+	tp.Nodes = append(tp.Nodes, service("peer"))
+	tp.Edges = append(tp.Edges,
+		model.Edge{From: "api", To: "peer"},
+		model.Edge{From: "peer", To: "api"},
+	)
 	if err := tp.Validate(); !errors.Is(err, model.ErrCycle) {
 		t.Errorf("Validate() on a two-component loop = %v, want ErrCycle", err)
 	}
