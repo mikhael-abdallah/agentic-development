@@ -50,6 +50,19 @@ type station struct {
 	capacity int
 	waiting  []*request
 
+	// What this component did, for the report at the end.
+	//
+	// busy[i] is connection-time: how long server i spent holding requests,
+	// counting a server holding three of its connections as three times as
+	// busy as one holding a single connection. Divided by what it could have
+	// held for the whole window, that is its utilization. changed is when
+	// slots was last touched, which is what makes the integral possible
+	// without visiting every station on every event.
+	busy    []time.Duration
+	changed time.Duration
+	served  int
+	dropped int
+
 	// algorithm decides which of next receives a request, and rotation is the
 	// state round robin keeps between decisions.
 	algorithm model.Algorithm
@@ -95,6 +108,7 @@ func newBalancer(n model.Node, downstream []string) (*station, error) {
 		hold:      overhead,
 		holdWrite: overhead,
 		slots:     make([]int, 1),
+		busy:      make([]time.Duration, 1),
 		algorithm: n.LoadBalancer.Algorithm,
 	}, nil
 }
@@ -116,6 +130,7 @@ func newService(n model.Node, downstream []string) (*station, error) {
 		holdWrite: mean,
 		sampled:   true,
 		slots:     make([]int, 1),
+		busy:      make([]time.Duration, 1),
 		pool:      n.Service.Instances,
 		capacity:  n.Service.QueueCapacity,
 	}, nil
@@ -138,6 +153,7 @@ func newCache(n model.Node, downstream []string) (*station, error) {
 		hold:      lookup,
 		holdWrite: lookup,
 		slots:     make([]int, 1),
+		busy:      make([]time.Duration, 1),
 		answers:   true,
 		hitRatio:  n.Cache.HitRatio,
 	}, nil
@@ -158,6 +174,7 @@ func newDatabase(n model.Node, downstream []string) (*station, error) {
 		holdWrite: n.Database.MeanWrite.Duration(),
 		sampled:   true,
 		slots:     make([]int, 1+n.Database.Replicas),
+		busy:      make([]time.Duration, 1+n.Database.Replicas),
 		pool:      n.Database.PoolSize,
 	}, nil
 }
