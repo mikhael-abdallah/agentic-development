@@ -135,25 +135,33 @@ body {
   margin: 0.9rem 0 0;
 }
 
-/* --- stage ----------------------------------------------------------- */
+/* --- canvas ---------------------------------------------------------- */
 
-.stage {
+.canvas {
+  position: relative;
   flex: 1;
   min-width: 0;
-  padding: 1.25rem;
-  overflow-y: auto;
 }
 
-.stage__list {
+.canvas__refusal {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
   margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+  padding: 0 0.7rem;
+  font-size: 0.78rem;
+  line-height: 2;
+  color: var(--panel);
+  background: var(--database);
+  border-radius: 999px;
 }
 
-.stage__item {
+.canvas__refusal:empty {
+  display: none;
+}
+
+.component {
   display: grid;
   gap: 0.1rem;
   min-width: 9.5rem;
@@ -162,42 +170,43 @@ body {
   border-left: 3px solid var(--kind, var(--line));
   border-radius: 6px;
   background: var(--panel);
+  color: var(--ink);
 }
 
-.stage__item--client {
+.component[data-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px light-dark(#1f5fd033, #6fa2ff44);
+}
+
+.component--client {
   --kind: var(--client);
 }
-.stage__item--loadBalancer {
+.component--loadBalancer {
   --kind: var(--load-balancer);
 }
-.stage__item--service {
+.component--service {
   --kind: var(--service);
 }
-.stage__item--cache {
+.component--cache {
   --kind: var(--cache);
 }
-.stage__item--database {
+.component--database {
   --kind: var(--database);
 }
 
-.stage__kind {
+.component__kind {
   font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--kind, var(--muted));
 }
 
-.stage__name {
+.component__name {
   font-size: 0.85rem;
   font-weight: 600;
 }
 
-.stage__summary,
-.stage__note {
+.component__summary {
   font-size: 0.72rem;
   color: var(--muted);
-}
-
-.stage__note {
-  margin: 1.25rem 0 0;
 }

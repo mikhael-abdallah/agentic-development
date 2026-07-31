@@ -1,15 +1,15 @@
 "use client";
 
+import { DesignCanvas } from "@/features/canvas/DesignCanvas";
 import { useDesign } from "@/features/canvas/useDesign";
 import { Palette } from "@/features/palette/Palette";
-import { describeParams, kindLabel } from "@/lib/describe";
 
-/** Every component lands here until there is a surface with coordinates on it.
- *  The design already carries positions; nothing reads them yet. */
-const UNPLACED = { x: 0, y: 0 };
+/** Where a component clicked rather than dragged lands. Roughly the middle of
+ *  the opening view, so it arrives on screen without landing on the client. */
+const CLICK_DROP = { x: 340, y: 220 };
 
 export default function Home() {
-  const { design, add } = useDesign();
+  const controller = useDesign();
 
   return (
     <main className="workspace">
@@ -20,23 +20,10 @@ export default function Home() {
       <div className="workspace__body">
         <Palette
           onAdd={(kind) => {
-            add(kind, UNPLACED);
+            controller.add(kind, CLICK_DROP);
           }}
         />
-        <section className="stage" aria-label="Design">
-          <ul className="stage__list">
-            {design.topology.nodes.map((node) => (
-              <li key={node.id} className={`stage__item stage__item--${node.kind}`}>
-                <span className="stage__kind">{node.kind}</span>
-                <span className="stage__name">{node.label ?? kindLabel(node.kind)}</span>
-                <span className="stage__summary">{describeParams(node)}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="stage__note">
-            A surface to arrange these on, and connections between them, come next.
-          </p>
-        </section>
+        <DesignCanvas controller={controller} />
       </div>
     </main>
   );
