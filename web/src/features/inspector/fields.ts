@@ -1,48 +1,10 @@
+import { PLENTY_MS, SMALLEST_MEAN_MS, type NumberField } from "@/lib/field";
 import type {
   CacheParams,
   DatabaseParams,
   LoadBalancerParams,
   ServiceParams,
 } from "@/lib/topology";
-
-/**
- * One editable number on a component.
- *
- * A field carries a getter and a setter rather than the name of a parameter.
- * A name would have to be looked up on the parameter object at runtime, which
- * is both a field that can name something that does not exist and an object
- * indexed by a string — and the compiler cannot check either. This way a field
- * that does not belong to its parameter type will not compile.
- *
- * `min` and `max` restate the engine's own bounds. They are here so a slider
- * cannot be dragged to a number the simulation would refuse; they are not the
- * enforcement, which stays in Go where every caller meets it.
- */
-export interface NumberField<P> {
-  label: string;
-  hint: string;
-  unit: string;
-  min: number;
-  max: number;
-  step: number;
-  get: (params: P) => number;
-  set: (params: P, value: number) => P;
-}
-
-/**
- * The smallest value the engine accepts for a duration it samples from.
- *
- * Service, read and write times are drawn from an exponential distribution
- * whose rate is 1/mean, so the engine refuses a mean of zero outright. A
- * spinner has to stop somewhere above it, and a tenth of a millisecond is
- * already faster than anything being modelled here.
- */
-const SMALLEST_MEAN_MS = 0.1;
-
-/** A ceiling for the spinners. Not the engine's limit — the engine's limit is
- *  the point where a duration stops fitting in a clock, which is nowhere near
- *  a number anyone would type on purpose. */
-const PLENTY_MS = 10_000;
 
 export const LOAD_BALANCER_FIELDS: NumberField<LoadBalancerParams>[] = [
   {
