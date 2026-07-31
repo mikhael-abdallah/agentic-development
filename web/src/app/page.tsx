@@ -7,7 +7,6 @@ import { Palette } from "@/features/palette/Palette";
 import { Library } from "@/features/simulation/Library";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 import { contractsOf } from "@/lib/describe";
-import { whyNotRemove } from "@/lib/design";
 
 export default function Home() {
   const controller = useDesign();
@@ -34,9 +33,6 @@ export default function Home() {
             wiring={contractsOf(controller.design.topology, selected?.id ?? "")}
             onChange={controller.replace}
             onRemove={controller.drop}
-            cannotRemove={
-              selected === undefined ? null : whyNotRemove(controller.design, selected.id)
-            }
           />
           <SimulationPanel topology={controller.design.topology} />
           <Library topology={controller.design.topology} onLoad={controller.load} />

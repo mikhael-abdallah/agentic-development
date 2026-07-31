@@ -631,3 +631,20 @@ body {
   font-size: 0.8rem;
   color: var(--muted);
 }
+
+/* Why the run button is off, next to the run button. */
+.simulation__blocked {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.simulation__blocked:empty {
+  display: none;
+}
+
+.simulation__run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
-import { emptyDesign } from "@/lib/design";
+import { addNode, connect, emptyDesign } from "@/lib/design";
 
 const BODY = {
   arrived: 1000,
@@ -31,8 +31,16 @@ function answers(status: number, body: unknown): void {
   );
 }
 
+/** client -> service. The smallest design that can actually be run: a client
+ *  wired to nothing has nowhere to send its requests, and the panel now says so
+ *  and turns the button off rather than letting it be pressed. */
+function runnable() {
+  const design = addNode(emptyDesign(), "service", { x: 0, y: 0 });
+  return connect(design, "client", "service").topology;
+}
+
 function panel() {
-  return render(<SimulationPanel topology={emptyDesign().topology} />);
+  return render(<SimulationPanel topology={runnable()} />);
 }
 
 afterEach(() => {
@@ -149,5 +157,19 @@ describe("SimulationPanel saying what it applies to", () => {
     const text = hint === null ? "" : (document.getElementById(hint)?.textContent ?? "");
     expect(text).toMatch(/at random/);
     expect(text).toMatch(/luck/);
+  });
+
+  // The other half of making the client deletable: a design that cannot be run
+  // says which, next to a button that cannot be pressed. A disabled control
+  // that gives no reason is indistinguishable from a broken one.
+  it("refuses to run a design with no client, and says so", () => {
+    render(<SimulationPanel topology={{ nodes: [], edges: [] }} />);
+    expect(screen.getByRole("button", { name: /Run simulation/ })).toHaveProperty("disabled", true);
+    expect(screen.getByText(/This design has no client/)).toBeDefined();
+  });
+
+  it("runs once the design has one", () => {
+    render(<SimulationPanel topology={runnable()} />);
+    expect(screen.getByRole("button", { name: /Run simulation/ })).toHaveProperty("disabled", false);
   });
 });

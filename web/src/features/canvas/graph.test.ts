@@ -184,14 +184,14 @@ describe("applyEdits", () => {
   });
 });
 
-// React Flow honours `deletable` itself, on the Backspace it handles without
-// asking the design. Marking the client is what closes that path.
+// The client used to be marked undeletable so React Flow's own Backspace would
+// leave it alone. Nothing is marked now: a design being drawn is allowed to be
+// unfinished, and `whyNotRun` is what says a design without a client cannot be
+// run.
 describe("toFlowNodes deletability", () => {
-  it("marks the client as the one component that cannot be deleted", () => {
+  it("leaves every component deletable, the client included", () => {
     const design = addNode(emptyDesign(), "cache", { x: 0, y: 0 });
-    const nodes = flow(design);
-    expect(nodes.find((node) => node.id === "client")?.deletable).toBe(false);
-    expect(nodes.find((node) => node.id === "cache")?.deletable).toBe(true);
+    expect(flow(design).map((node) => node.deletable)).toEqual([undefined, undefined]);
   });
 });
 

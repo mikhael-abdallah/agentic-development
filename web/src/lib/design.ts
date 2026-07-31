@@ -1,3 +1,4 @@
+import { kindLabel } from "@/lib/describe";
 import {
   type DesignNode,
   type NodeKind,
@@ -123,29 +124,23 @@ export function addNode(design: Design, kind: NodeKind, at: Position): Design {
 }
 
 /**
- * Why this component cannot be removed, or null if it can.
+ * Removing a component takes its edges with it: an edge to a component that is
+ * not there is the one thing the engine cannot even report a design for.
  *
- * The mirror of `whyNotConnect`, and there for the same reason: a design the
- * engine will refuse is better prevented while it is being drawn than
- * explained after a run fails. The client is where load comes from and a
- * design has exactly one, so removing it leaves a design that cannot be
- * simulated and nothing to put back in its place.
+ * Anything can go, including the client. It used to be the exception — there
+ * was no control to remove it and Backspace was told to leave it alone —
+ * on the grounds that a design without a client cannot be simulated. That is
+ * true and it was still the wrong place to say it: a design being drawn is
+ * allowed to be unfinished, and a component that cannot be taken off the canvas
+ * reads as a bug in the canvas rather than as a rule about designs. The rule now
+ * lives where it is actually true, in `whyNotRun`, which says what a design
+ * without a client cannot do and leaves putting one back to the palette.
  */
-export function whyNotRemove(design: Design, id: string): string | null {
-  const node = design.topology.nodes.find((candidate) => candidate.id === id);
-  if (node === undefined) {
-    return "That component is not in this design.";
-  }
-  if (node.kind === "client") {
-    return "Every design needs its client: it is where the load comes from.";
-  }
-  return null;
-}
-
-/** Removing a component takes its edges with it: an edge to a component that
- *  is not there is the one thing the engine cannot even report a design for. */
 export function removeNode(design: Design, id: string): Design {
-  if (whyNotRemove(design, id) !== null) {
+  // Nothing to do, and the same design back rather than an identical copy of
+  // it: everything downstream compares designs by identity to decide whether
+  // to redraw.
+  if (!design.topology.nodes.some((node) => node.id === id)) {
     return design;
   }
   const positions = new Map(design.positions);
@@ -237,8 +232,9 @@ export function disconnect(design: Design, from: string, to: string): Design {
   };
 }
 
-/** Whether `target` is downstream of `start`, following edges forwards. */
-function reaches(topology: Topology, start: string, target: string): boolean {
+/** Every component reachable from `start`, following edges forwards, including
+ *  `start` itself. */
+function reachableFrom(topology: Topology, start: string): Set<string> {
   const seen = new Set<string>();
   const pending = [start];
   while (pending.length > 0) {
@@ -246,13 +242,44 @@ function reaches(topology: Topology, start: string, target: string): boolean {
     if (id === undefined || seen.has(id)) {
       continue;
     }
-    if (id === target) {
-      return true;
-    }
     seen.add(id);
     pending.push(...topology.edges.filter((edge) => edge.from === id).map((edge) => edge.to));
   }
-  return false;
+  return seen;
+}
+
+/** Whether `target` is downstream of `start`, following edges forwards. */
+function reaches(topology: Topology, start: string, target: string): boolean {
+  return reachableFrom(topology, start).has(target);
+}
+
+/**
+ * Why this design cannot be run, or null if it can.
+ *
+ * A subset of the engine's `Topology.Validate`, deliberately: the canvas
+ * already refuses the edges that break the other rules, so what is left here is
+ * what a design can drift into while it is being drawn — a client deleted, a
+ * second one added, a component left unwired. The engine remains the authority
+ * and checks all of it again on every run. This exists so the button can say
+ * what is wrong instead of having to be pressed to find out.
+ */
+export function whyNotRun(topology: Topology): string | null {
+  const [client, ...spare] = topology.nodes.filter((node) => node.kind === "client");
+  if (client === undefined) {
+    return "This design has no client, so nothing is offering it any load. Add one from the palette.";
+  }
+  if (spare.length > 0) {
+    return "This design has more than one client. A run puts one stream of requests through it, so it needs one place for them to start.";
+  }
+  if (!topology.edges.some((edge) => edge.from === client.id)) {
+    return "The client is not connected to anything, so the requests it offers have nowhere to go.";
+  }
+  const reached = reachableFrom(topology, client.id);
+  const stranded = topology.nodes.find((node) => !reached.has(node.id));
+  if (stranded !== undefined) {
+    return `Nothing reaches ${stranded.label ?? kindLabel(stranded.kind)}. A component the client cannot get to takes no part in the run, and its absence from the results would read as "not a bottleneck" rather than "never wired up".`;
+  }
+  return null;
 }
 
 /**
