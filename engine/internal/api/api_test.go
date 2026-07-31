@@ -34,7 +34,7 @@ func post(t *testing.T, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/simulate", strings.NewReader(body))
 	rec := httptest.NewRecorder()
-	api.Handler().ServeHTTP(rec, req)
+	api.Handler(nil).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -50,7 +50,7 @@ func TestHealthzAnswers(t *testing.T) {
 	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
-	api.Handler().ServeHTTP(rec, req)
+	api.Handler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /healthz = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -125,7 +125,7 @@ func TestNewServerSetsAReadHeaderTimeout(t *testing.T) {
 	// Without it a peer can hold a connection open by sending headers one
 	// byte at a time, for free, forever. gosec fails the build over this, so
 	// the test is here to keep the fix from being reverted quietly.
-	if got := api.NewServer(":0").ReadHeaderTimeout; got == 0 {
+	if got := api.NewServer(":0", nil).ReadHeaderTimeout; got == 0 {
 		t.Error("NewServer left ReadHeaderTimeout unset")
 	}
 }
@@ -134,7 +134,7 @@ func TestTheWrongMethodIsRefused(t *testing.T) {
 	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/simulate", nil)
 	rec := httptest.NewRecorder()
-	api.Handler().ServeHTTP(rec, req)
+	api.Handler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET /simulate = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
@@ -144,7 +144,7 @@ func TestAnUnknownPathIsNotFound(t *testing.T) {
 	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/simulations", nil)
 	rec := httptest.NewRecorder()
-	api.Handler().ServeHTTP(rec, req)
+	api.Handler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("GET /simulations = %d, want %d", rec.Code, http.StatusNotFound)
 	}
@@ -237,7 +237,7 @@ func TestServeReturnsWhenTheContextIsCancelled(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- api.Serve(ctx, api.NewServer("127.0.0.1:0")) }()
+	go func() { done <- api.Serve(ctx, api.NewServer("127.0.0.1:0", nil)) }()
 	cancel()
 	select {
 	case err := <-done:
@@ -254,7 +254,7 @@ func TestServeReturnsWhenTheContextIsCancelled(t *testing.T) {
 func TestServeReportsAnAddressItCannotUse(t *testing.T) {
 	t.Parallel()
 	done := make(chan error, 1)
-	go func() { done <- api.Serve(t.Context(), api.NewServer("127.0.0.1:not-a-port")) }()
+	go func() { done <- api.Serve(t.Context(), api.NewServer("127.0.0.1:not-a-port", nil)) }()
 	select {
 	case err := <-done:
 		if err == nil {

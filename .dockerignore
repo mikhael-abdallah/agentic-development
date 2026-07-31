@@ -1,0 +1,26 @@
+# What the image build is allowed to see.
+#
+# Denied by default: the build needs engine/ and web/ sources and nothing else,
+# and every extra path is both a slower build context and a way for something
+# that was never meant to ship to end up in a layer. The rule is inverted
+# rather than enumerated so that a new top-level file is excluded until someone
+# decides otherwise.
+*
+
+!engine/
+!web/
+
+# Build output and dependency trees from the host. Copying these in would let a
+# local `next build` or `npm install` decide what the image contains, which is
+# the difference between a build and a snapshot of somebody's laptop.
+web/node_modules/
+web/.next/
+web/out/
+web/coverage/
+
+# Nothing generated locally, and nothing private.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/.DS_Store
