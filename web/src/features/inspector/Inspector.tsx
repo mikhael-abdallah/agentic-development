@@ -7,12 +7,22 @@ import {
   LOAD_BALANCER_FIELDS,
   SERVICE_FIELDS,
 } from "@/features/inspector/fields";
-import { type Contract, algorithmLabel, kindBlurb, kindLabel } from "@/lib/describe";
+import {
+  type Contract,
+  algorithmLabel,
+  kindBlurb,
+  kindLabel,
+  writePolicyBlurb,
+  writePolicyLabel,
+} from "@/lib/describe";
 import {
   ALGORITHMS,
   type Algorithm,
+  type CacheParams,
   type DesignNode,
   type LoadBalancerParams,
+  WRITE_POLICIES,
+  type WritePolicy,
 } from "@/lib/topology";
 
 interface BalancerProps {
@@ -49,6 +59,52 @@ function Balancer({ params, onParams }: BalancerProps) {
         )}
       </Row>
       <Numbers subject={params} fields={LOAD_BALANCER_FIELDS} onChange={onParams} />
+    </>
+  );
+}
+
+interface CacheProps {
+  readonly params: CacheParams;
+  readonly onParams: (params: CacheParams) => void;
+}
+
+/**
+ * A cache is a hit ratio, a lookup cost, and one decision.
+ *
+ * The decision gets its own control and its own paragraph because it is the
+ * only parameter here whose cost the simulator does not measure. Two of the
+ * three policies buy their speed with something no number on this screen
+ * moves — staleness, and a lost acknowledged write — so the panel says which,
+ * and says it next to the choice rather than in documentation.
+ */
+function Cache({ params, onParams }: CacheProps) {
+  const policy = params.writePolicy;
+  return (
+    <>
+      <Numbers subject={params} fields={CACHE_FIELDS} onChange={onParams} />
+      <Row
+        label="Writes"
+        hint="A read is what a cache is for, and the hit ratio settles it. A write has to reach the store, so the only question is what the cache does on the way."
+      >
+        {({ id, describedBy }) => (
+          <select
+            id={id}
+            aria-describedby={describedBy}
+            className="field__input"
+            value={policy}
+            onChange={(event) => {
+              onParams({ ...params, writePolicy: event.target.value as WritePolicy });
+            }}
+          >
+            {WRITE_POLICIES.map((option) => (
+              <option key={option} value={option}>
+                {writePolicyLabel(option)}
+              </option>
+            ))}
+          </select>
+        )}
+      </Row>
+      <p className="field__hint">{writePolicyBlurb(policy)}</p>
     </>
   );
 }
@@ -95,10 +151,9 @@ function Params({ node, onChange }: ParamsProps) {
       );
     case "cache":
       return node.cache === undefined ? null : (
-        <Numbers
-          subject={node.cache}
-          fields={CACHE_FIELDS}
-          onChange={(cache) => {
+        <Cache
+          params={node.cache}
+          onParams={(cache) => {
             onChange({ ...node, cache });
           }}
         />

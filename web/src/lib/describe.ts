@@ -1,5 +1,5 @@
 import { formatLatency } from "@/lib/format";
-import type { Algorithm, DesignNode, NodeKind, Topology } from "@/lib/topology";
+import type { Algorithm, DesignNode, NodeKind, Topology, WritePolicy } from "@/lib/topology";
 
 /**
  * What a component is called and what it does, in the words the palette and
@@ -184,4 +184,34 @@ export function contractsOf(
       carries: carriedBy(id),
     }));
   return { incoming, outgoing };
+}
+
+export function writePolicyLabel(policy: WritePolicy): string {
+  switch (policy) {
+    case "writeThrough":
+      return "write through";
+    case "writeAround":
+      return "write around";
+    case "writeBack":
+      return "write back";
+  }
+}
+
+/**
+ * What choosing this policy does, and what it costs.
+ *
+ * Both halves, because two of the three buy their speed with something this
+ * simulator does not measure. A panel that showed only the numbers would be
+ * recommending write-back on the evidence of a database that went idle, and
+ * the evidence would be complete and the recommendation wrong.
+ */
+export function writePolicyBlurb(policy: WritePolicy): string {
+  switch (policy) {
+    case "writeThrough":
+      return "The write goes to the store and updates the cache on the way. The caller waits for both, and the cache never holds anything the store disagrees with.";
+    case "writeAround":
+      return "The write goes straight to the store and the cache is left alone — cheaper by whatever a lookup costs, and the entry that was there is now wrong. Staleness is not simulated: a hit ratio has no keys to go stale.";
+    case "writeBack":
+      return "The cache answers the write and the store catches up afterwards, so the store sees no writes at all during a run. The fastest writes and the least load — bought with durability, which is not simulated either: nothing here crashes while the cache is holding writes the store has not taken.";
+  }
 }
