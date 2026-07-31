@@ -15,9 +15,11 @@ import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react
 import { ComponentNode } from "@/features/canvas/ComponentNode";
 import {
   type ComponentNode as ComponentNodeType,
+  type Sizes,
   applyEdits,
   editsFromEdgeChanges,
   editsFromNodeChanges,
+  measuredIn,
   toFlowEdges,
   toFlowNodes,
 } from "@/features/canvas/graph";
@@ -70,7 +72,13 @@ function Surface({ controller }: SurfaceProps) {
   // that silently fails to appear reads as a broken canvas.
   const [refusal, setRefusal] = useState<string | null>(null);
 
-  const nodes = useMemo(() => toFlowNodes(design), [design]);
+  // What React Flow has measured each component to be. State of its own,
+  // beside the design rather than inside it, and the components are derived
+  // from the two together — so the design stays the only thing that says what
+  // is in the design, and a size it never asked for cannot end up saved.
+  const [sizes, setSizes] = useState<Sizes>(() => new Map());
+
+  const nodes = useMemo(() => toFlowNodes(design, sizes), [design, sizes]);
   const edges = useMemo(() => toFlowEdges(design.topology), [design.topology]);
 
   // Bring the view back whenever the set of components changes — one arriving
@@ -84,6 +92,14 @@ function Surface({ controller }: SurfaceProps) {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<ComponentNodeType>[]) => {
+      // A measurement is not an edit to the design, but losing one is what
+      // made the whole canvas blink on every frame of a drag. Kept only when
+      // there is one, so that a drag — which changes no size — does not set
+      // state sixty times a second to store what it already had.
+      const measured = measuredIn(changes);
+      if (measured.size > 0) {
+        setSizes((current) => new Map([...current, ...measured]));
+      }
       applyEdits(editsFromNodeChanges(changes), { move, drop, unlink });
     },
     [move, drop, unlink],

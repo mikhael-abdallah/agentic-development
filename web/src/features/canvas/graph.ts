@@ -26,7 +26,45 @@ export function edgeId(from: string, to: string): string {
   return `${from}->${to}`;
 }
 
-export function toFlowNodes(design: Design): ComponentNode[] {
+/**
+ * What React Flow has measured each component to be.
+ *
+ * Kept beside the design rather than in it. How wide a box comes out is a fact
+ * about the font and the window, not about the system being designed, and a
+ * design that carried it would save it to the library and post it to the
+ * engine, neither of which has any use for a pixel.
+ */
+export type Sizes = Map<string, { width: number; height: number }>;
+
+/** What React Flow measured in a batch of changes, if anything. */
+export function measuredIn(changes: NodeChange<ComponentNode>[]): Sizes {
+  const sizes: Sizes = new Map();
+  for (const change of changes) {
+    if (change.type === "dimensions" && change.dimensions !== undefined) {
+      sizes.set(change.id, { ...change.dimensions });
+    }
+  }
+  return sizes;
+}
+
+/**
+ * The design's components, as React Flow draws them.
+ *
+ * Handing each one back the size it was measured at is the whole reason this
+ * takes a second argument. React Flow will not paint a component it has no
+ * size for — until a measurement lands the node is rendered with
+ * `visibility: hidden` — and it throws the measurement away whenever it is
+ * handed a node object it does not recognise, which is every object here every
+ * time the design changes. The design changes on every pixel of a drag, so
+ * dragging one component blanked every component on the canvas over and over:
+ * 143 disappearances across all five components of the preset during a single
+ * drag of one of them.
+ *
+ * A component nothing has measured yet gets no size, which is right: it has
+ * none until it has been laid out once, and React Flow holds it back for that
+ * one frame rather than painting it at nothing.
+ */
+export function toFlowNodes(design: Design, sizes: Sizes): ComponentNode[] {
   return design.topology.nodes.map((node) => ({
     id: node.id,
     type: "component",
@@ -36,6 +74,7 @@ export function toFlowNodes(design: Design): ComponentNode[] {
     // Saying so here is what stops Backspace from taking the client with it
     // and leaving a design nothing can put load through.
     deletable: node.kind !== "client",
+    measured: sizes.get(node.id),
     data: {
       kind: node.kind,
       name: node.label ?? kindLabel(node.kind),

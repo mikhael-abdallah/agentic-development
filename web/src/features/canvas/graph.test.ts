@@ -1,16 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type ComponentNode,
+  type Sizes,
   applyEdits,
   edgeId,
   editsFromEdgeChanges,
   editsFromNodeChanges,
+  measuredIn,
   toFlowEdges,
   toFlowNodes,
 } from "@/features/canvas/graph";
-import { type Design, addNode, connect, emptyDesign, selectNode } from "@/lib/design";
+import {
+  type Design,
+  addNode,
+  connect,
+  emptyDesign,
+  moveNode,
+  selectNode,
+} from "@/lib/design";
 
 const SOMEWHERE = { x: 10, y: 20 };
+
+/** Nodes for a design nothing has measured yet — the state everything is in
+ *  for one frame after a component arrives, and all most of these tests need. */
+function flow(design: Design): ComponentNode[] {
+  return toFlowNodes(design, new Map());
+}
+
+/** Every component measured to the same box, which is what they come out as
+ *  once the browser has laid one row of them out. */
+function allMeasured(design: Design): Sizes {
+  return new Map(design.topology.nodes.map((node) => [node.id, { width: 152, height: 64 }]));
+}
 
 /** client -> service -> database. The service is not decoration: a client does
  *  not call a database, and `connect` refuses the edge that says it does. */
@@ -23,7 +45,7 @@ function chain(): Design {
 
 describe("toFlowNodes", () => {
   it("places every component where the design put it", () => {
-    const nodes = toFlowNodes(chain());
+    const nodes = flow(chain());
     expect(nodes.map((node) => node.id)).toEqual(["client", "service", "database"]);
     expect(nodes[2]?.position).toEqual(SOMEWHERE);
   });
@@ -34,24 +56,24 @@ describe("toFlowNodes", () => {
   it("gives a component with no position one anyway", () => {
     const design = chain();
     design.positions.delete("database");
-    expect(toFlowNodes(design)[2]?.position).toEqual({ x: 0, y: 0 });
+    expect(flow(design)[2]?.position).toEqual({ x: 0, y: 0 });
   });
 
   it("carries the selection so the canvas does not keep its own", () => {
-    const nodes = toFlowNodes(selectNode(chain(), "database"));
+    const nodes = flow(selectNode(chain(), "database"));
     expect(nodes.map((node) => node.selected)).toEqual([false, false, true]);
   });
 
   it("shows a component's own label when it has one", () => {
-    expect(toFlowNodes(emptyDesign())[0]?.data.name).toBe("Client");
+    expect(flow(emptyDesign())[0]?.data.name).toBe("Client");
   });
 
   it("falls back to the name of the kind when it has none", () => {
-    expect(toFlowNodes(chain())[2]?.data.name).toBe("Database");
+    expect(flow(chain())[2]?.data.name).toBe("Database");
   });
 
   it("summarises the parameters that decide how it behaves", () => {
-    expect(toFlowNodes(chain())[2]?.data.summary).toContain("replicas");
+    expect(flow(chain())[2]?.data.summary).toContain("replicas");
   });
 });
 
@@ -167,35 +189,55 @@ describe("applyEdits", () => {
 describe("toFlowNodes deletability", () => {
   it("marks the client as the one component that cannot be deleted", () => {
     const design = addNode(emptyDesign(), "cache", { x: 0, y: 0 });
-    const flow = toFlowNodes(design);
-    expect(flow.find((node) => node.id === "client")?.deletable).toBe(false);
-    expect(flow.find((node) => node.id === "cache")?.deletable).toBe(true);
+    const nodes = flow(design);
+    expect(nodes.find((node) => node.id === "client")?.deletable).toBe(false);
+    expect(nodes.find((node) => node.id === "cache")?.deletable).toBe(true);
   });
 });
 
-// An arrow between two boxes says the two are connected and nothing about what
-// connects them, which is what made a design read as a picture rather than as
-// a system.
-describe("toFlowEdges labelling", () => {
-  it("says what crosses each connection", () => {
-    const labels = toFlowEdges(chain().topology).map((edge) => edge.label);
-    expect(labels).toEqual(["every request", "every request"]);
+// The canvas went blank on every frame of a drag because a node rebuilt from
+// the design carries no size, and React Flow renders a node it cannot size with
+// `visibility: hidden`. Both of these fail against a `toFlowNodes` that does
+// not hand the size back, which is what the canvas did when the bug was filed.
+describe("toFlowNodes keeps measured sizes", () => {
+  it("hands every component the size it was measured at", () => {
+    const design = chain();
+    const nodes = toFlowNodes(design, allMeasured(design));
+    expect(nodes.map((node) => node.measured)).toEqual([
+      { width: 152, height: 64 },
+      { width: 152, height: 64 },
+      { width: 152, height: 64 },
+    ]);
   });
 
-  // The one kind that forwards less than it receives, and the reason a cache
-  // is worth drawing at all.
-  it("says a cache passes on only what it could not answer", () => {
-    let design = addNode(emptyDesign(), "service", SOMEWHERE);
-    design = addNode(design, "cache", SOMEWHERE);
-    design = addNode(design, "database", SOMEWHERE);
-    design = connect(design, "client", "service");
-    design = connect(design, "service", "cache");
-    design = connect(design, "cache", "database");
-    expect(design.topology.edges).toHaveLength(3);
-    const carried = new Map(
-      toFlowEdges(design.topology).map((edge) => [edge.id, edge.label]),
-    );
-    expect(carried.get(edgeId("cache", "database"))).toBe("misses, and every write");
-    expect(carried.get(edgeId("service", "cache"))).toBe("every request");
+  // The one that matters: the design changes on every pixel of a drag, and
+  // every component has to come back out of it still knowing its size.
+  it("still hands it back after the design has moved a component", () => {
+    const design = chain();
+    const sizes = allMeasured(design);
+    const moved = toFlowNodes(moveNode(design, "database", { x: 400, y: 400 }), sizes);
+    expect(moved.map((node) => node.measured?.width)).toEqual([152, 152, 152]);
+    expect(moved[2]?.position).toEqual({ x: 400, y: 400 });
+  });
+
+  it("leaves a component nothing has measured without a size", () => {
+    expect(flow(emptyDesign())[0]?.measured).toBeUndefined();
+  });
+});
+
+// Measurements arrive mixed in with everything else React Flow reports, and
+// they are the only part of it the canvas has to keep.
+describe("measuredIn", () => {
+  it("picks out what was measured and nothing else", () => {
+    const sizes = measuredIn([
+      { id: "client", type: "dimensions", dimensions: { width: 152, height: 64 } },
+      { id: "cache", type: "position", position: { x: 1, y: 2 } },
+      { id: "db", type: "select", selected: true },
+    ]);
+    expect([...sizes]).toEqual([["client", { width: 152, height: 64 }]]);
+  });
+
+  it("finds nothing in a batch that measured nothing", () => {
+    expect(measuredIn([{ id: "db", type: "position", position: { x: 1, y: 2 } }]).size).toBe(0);
   });
 });
