@@ -179,19 +179,27 @@ body {
   box-shadow: 0 0 0 2px light-dark(#1f5fd033, #6fa2ff44);
 }
 
-.component--client {
+/* The kind colour, set as a custom property so anything inside can use it.
+   Matched on the canvas node's class and on any panel carrying data-kind, so
+   the inspector's heading is the colour of the component it is about. */
+.component--client,
+[data-kind="client"] {
   --kind: var(--client);
 }
-.component--loadBalancer {
+.component--loadBalancer,
+[data-kind="loadBalancer"] {
   --kind: var(--load-balancer);
 }
-.component--service {
+.component--service,
+[data-kind="service"] {
   --kind: var(--service);
 }
-.component--cache {
+.component--cache,
+[data-kind="cache"] {
   --kind: var(--cache);
 }
-.component--database {
+.component--database,
+[data-kind="database"] {
   --kind: var(--database);
 }
 
@@ -249,6 +257,30 @@ body {
   overflow-y: auto;
   border-left: 1px solid var(--line);
   background: var(--panel);
+}
+
+/* Three panels stack in one column drawing identical rows of numbers. Without
+   a heading that names the scope, a queue capacity and an arrival rate read as
+   two settings of the same thing. */
+.panel__scope {
+  margin: 0;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.panel__title {
+  margin: 0.1rem 0 0.15rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--kind, var(--ink));
+}
+
+.panel__kind {
+  margin: 0 0 0.8rem;
+  font-size: 0.72rem;
+  color: var(--muted);
 }
 
 .inspector__title {

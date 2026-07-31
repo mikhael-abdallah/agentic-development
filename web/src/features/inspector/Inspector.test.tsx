@@ -20,9 +20,10 @@ describe("Inspector", () => {
   it("has something to show for every kind in the contract", () => {
     for (const kind of NODE_KINDS) {
       const { unmount } = render(<Inspector node={newNode(kind, kind)} onChange={vi.fn()} onRemove={vi.fn()} cannotRemove={null} />);
-      expect(screen.getByRole("complementary", { name: "Parameters" }).textContent).not.toBe(
-        "Parameters",
-      );
+      const panel = screen.getByRole("complementary", { name: "Component settings" });
+      // Something beyond the heading and the scope line: an editor, not a
+      // label. The blurb alone would satisfy a looser check.
+      expect(panel.querySelectorAll(".field").length).toBeGreaterThan(0);
       unmount();
     }
   });
@@ -129,5 +130,41 @@ describe("Inspector removing a component", () => {
     );
     expect(screen.queryByRole("button", { name: /Remove this component/ })).toBeNull();
     expect(screen.getByText("Every design needs its client.")).toBeDefined();
+  });
+});
+
+// Three panels stack in one column drawing identical rows of numbers, so
+// nothing but the heading says whether a number belongs to one component or to
+// the whole run. Without it, a queue capacity and an arrival rate read as two
+// settings of the same thing.
+describe("Inspector saying whose settings these are", () => {
+  it("names the selected component rather than the panel", () => {
+    render(
+      <Inspector
+        node={{ ...newNode("cache", "cache"), label: "Key cache" }}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+        cannotRemove={null}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Key cache" })).toBeDefined();
+    expect(screen.getByText("Selected component")).toBeDefined();
+  });
+
+  it("falls back to the kind when the component has no name of its own", () => {
+    render(
+      <Inspector
+        node={newNode("database", "database")}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+        cannotRemove={null}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Database" })).toBeDefined();
+  });
+
+  it("says so plainly when nothing is selected", () => {
+    render(<Inspector node={undefined} onChange={vi.fn()} onRemove={vi.fn()} cannotRemove={null} />);
+    expect(screen.getByRole("heading", { name: "Nothing selected" })).toBeDefined();
   });
 });

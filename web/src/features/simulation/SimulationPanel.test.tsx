@@ -131,3 +131,23 @@ describe("SimulationPanel", () => {
     });
   });
 });
+
+// The panel above this one edits one component. These numbers are the traffic
+// offered to the whole design, and the two draw identical rows.
+describe("SimulationPanel saying what it applies to", () => {
+  it("says these settings are the whole design's, not a component's", () => {
+    panel();
+    expect(screen.getByText("Whole design")).toBeDefined();
+    expect(screen.getByRole("region", { name: "Run settings" })).toBeDefined();
+  });
+
+  // Someone who has not met a seed cannot act on "the same seed gives the same
+  // result": it explains the property and not the thing.
+  it("explains what a seed is, not only what it does", () => {
+    panel();
+    const hint = screen.getByLabelText(/Seed/).getAttribute("aria-describedby");
+    const text = hint === null ? "" : (document.getElementById(hint)?.textContent ?? "");
+    expect(text).toMatch(/at random/);
+    expect(text).toMatch(/luck/);
+  });
+});

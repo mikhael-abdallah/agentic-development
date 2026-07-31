@@ -75,7 +75,8 @@ export function Library({ topology, onLoad }: LibraryProps) {
   };
 
   return (
-    <section className="library" aria-label="Designs">
+    <section className="panel library" aria-label="Designs">
+      <p className="panel__scope">Saved in this browser</p>
       <h2 className="library__title">Start from</h2>
       <ul className="library__list">
         {presets.status === "ready"
