@@ -14,15 +14,26 @@ predictable enough that an agent can find (or place) any file without asking.
 ## Top-level layout
 
 ```
-engine/     Go simulation engine (pure core + thin adapters)
-web/        Next.js frontend (canvas UI)
-scripts/    guards + agent tooling (single source of truth for CI and local)
-docs/       architecture decisions, roadmap support material
-.github/    workflows (thin wrappers around scripts/guards/*.sh)
-.githooks/  pre-push hook (guards + AI review)
+engine/         Go simulation engine (pure core + thin adapters)
+web/            Next.js frontend (canvas UI)
+scripts/        guards + agent tooling (single source of truth for CI and local)
+docs/           architecture decisions, roadmap support material
+.github/        workflows (thin wrappers around scripts/guards/*.sh)
+.githooks/      pre-push hook (guards + AI review)
+Dockerfile      the whole product as one image: engined serving the exported app
+.dockerignore   what the image build is allowed to see (deny by default)
 ```
 
-No other top-level directories. The structure guard enforces this allowlist.
+No other top-level directories, and no other top-level files. The structure
+guard enforces both allowlists, and widening either one means changing this
+document in the same pull request.
+
+The `Dockerfile` sits at the root rather than beside either half because it
+builds both: `engine/` compiles to a static binary, `web/` exports to static
+files, and the runtime image is that binary serving those files. The two halves
+reach the browser from one origin and one process — see
+[Go engine](#go-engine-engine) for why `engined` owns the file serving rather
+than a second server standing in front of it.
 
 ## Go engine (`engine/`)
 
@@ -52,6 +63,12 @@ placement):
 - The engine reaches the browser two ways from the same core: `engined`
   (HTTP API) and `simwasm` (client-side WASM). Adapters stay thin; anything
   worth testing lives in `internal`.
+- `api` also serves the exported web app, given a directory to serve it from.
+  A second server in front of this one would add a process, a port and a
+  reverse-proxy config to maintain, in exchange for nothing the browser can
+  tell apart — and it would put the page and the API on different origins,
+  which is a CORS policy that has to stay in step with both. `engined -assets`
+  is the whole deployment.
 
 ## Web app (`web/src/`)
 

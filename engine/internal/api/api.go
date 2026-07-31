@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"time"
 )
@@ -18,11 +19,20 @@ import (
 //
 // The patterns name their methods, so a GET to /simulate is answered with 405
 // by the router rather than by a check every handler would have to remember.
-func Handler() http.Handler {
+//
+// assets is the built web app, or nil for the JSON API alone. Serving both
+// from one origin is what lets the page ask for /simulate with no CORS policy
+// to keep in step: the process answering the request is the one that served
+// the page asking it.
+func Handler(assets fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("GET /scenarios", scenarios)
 	mux.HandleFunc("POST /simulate", simulate)
+	if assets != nil {
+		mux.Handle("GET /", staticFiles(assets))
+		mux.HandleFunc("GET /simulate", simulateNeedsPost)
+	}
 	return mux
 }
 
@@ -35,10 +45,10 @@ func Handler() http.Handler {
 // that reason. WriteTimeout has to outlast the longest simulation this server
 // will accept, or the answer is cut off after the work is done — the least
 // useful possible failure.
-func NewServer(addr string) *http.Server {
+func NewServer(addr string, assets fs.FS) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		Handler:           Handler(),
+		Handler:           Handler(assets),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      2 * time.Minute,

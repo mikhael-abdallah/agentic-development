@@ -25,7 +25,7 @@ func getScenarios(t *testing.T) []scenarioBody {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/scenarios", nil)
 	rec := httptest.NewRecorder()
-	api.Handler().ServeHTTP(rec, req)
+	api.Handler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /scenarios = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body)
 	}
@@ -104,7 +104,7 @@ func TestTheWrongMethodOnScenariosIsRefused(t *testing.T) {
 	t.Parallel()
 	req := httptest.NewRequest(http.MethodPost, "/scenarios", nil)
 	rec := httptest.NewRecorder()
-	api.Handler().ServeHTTP(rec, req)
+	api.Handler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST /scenarios = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}

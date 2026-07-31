@@ -61,14 +61,43 @@ pre-push hook, so a doomed push never reaches the runner. The guards have their
 own test suites — they share a failure mode where a broken check and a passing
 one look exactly alike.
 
+## Running the simulator
+
+```
+docker build -t simulator .
+docker run --rm -p 8080:8080 simulator
+```
+
+Then open <http://localhost:8080>: drag components onto the canvas, or start
+from the URL shortener under **Start from**, set the load, and run it. The same
+process answers the API:
+
+```
+curl -s localhost:8080/healthz
+curl -s localhost:8080/scenarios | jq '.[0].id'
+```
+
+One image, one process, no Node in it. `next build` exports the app to static
+files and `engined` serves them beside `/simulate`, so the page and the API
+share an origin. To run the two halves separately while developing:
+
+```
+scripts/web-npm.sh run dev                        # the app, on :3000
+cd engine && go run ./cmd/engined -addr :8080     # the API, on :8080
+```
+
+with `NEXT_PUBLIC_ENGINE_URL=http://localhost:8080` in `web/.env.local` so the
+app knows where the engine went.
+
 ## Roadmap
 
 First project: an interactive **system design simulator** — drag components onto a canvas (databases, caches, queues), set a target load, and watch simulated latency/throughput expose the bottlenecks. Structure and boundaries are specified up front in [ARCHITECTURE.md](ARCHITECTURE.md), so both the agents and the guardrails know where every file belongs.
 
 ## Status
 
-Bootstrap phase — the pipeline comes first, the product second. The guardrails
-are in place; the simulator is next.
+The guardrails are in place and the simulator runs: a discrete-event engine
+checked against a closed-form queue model, a canvas to design on, and the URL
+shortener as the first scenario.
 
 ## Security
 

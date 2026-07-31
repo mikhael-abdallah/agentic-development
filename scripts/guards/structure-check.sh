@@ -50,6 +50,7 @@ paths_under() {
 
 TOP_DIRS=(engine web scripts docs .github .githooks)
 TOP_FILES=(AGENTS.md ARCHITECTURE.md LICENSE README.md ROADMAP.md SECURITY.md
+  Dockerfile .dockerignore
   osv-scanner.toml .editorconfig .gitattributes .gitignore)
 
 check_top_level() {

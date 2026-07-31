@@ -54,7 +54,21 @@ const sliceIsolation = (slice) => ({
 });
 
 export default tseslint.config(
-  { ignores: [".next/**", "coverage/**", "node_modules/**", "next-env.d.ts", "*.config.*"] },
+  // Build output, not source. `out/` is the static export the container ships;
+  // linting it means linting minified bundles that no tsconfig covers, so the
+  // gate would pass or fail depending on whether you had built first — a
+  // different answer locally than in CI, which is the one thing these guards
+  // are not allowed to give.
+  {
+    ignores: [
+      ".next/**",
+      "out/**",
+      "coverage/**",
+      "node_modules/**",
+      "next-env.d.ts",
+      "*.config.*",
+    ],
+  },
 
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
