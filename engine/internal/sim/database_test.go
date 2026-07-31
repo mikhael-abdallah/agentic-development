@@ -15,6 +15,7 @@ func stored(replicas, pool int, meanRead, meanWrite model.Millis) model.Topology
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			entry(),
 			frontend(),
 			{ID: "db", Kind: model.KindDatabase, Database: &model.DatabaseParams{
 				Replicas:  replicas,
@@ -23,7 +24,9 @@ func stored(replicas, pool int, meanRead, meanWrite model.Millis) model.Topology
 				PoolSize:  pool,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "front"}, {From: "front", To: "db"}},
+		Edges: []model.Edge{
+			{From: "client", To: "in"}, {From: "in", To: "front"}, {From: "front", To: "db"},
+		},
 	}
 }
 

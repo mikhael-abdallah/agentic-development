@@ -213,6 +213,18 @@ func TestValidateRejects(t *testing.T) {
 		{"a cache calling a service", func(tp *model.Topology) {
 			tp.Edges = append(tp.Edges, model.Edge{From: "cache", To: "api"})
 		}, model.ErrEdgeKinds},
+
+		// ErrFanOut's twin, one level down: the simulation runs Instances
+		// requests at once through one queue, which is only what a pool does if
+		// something spreads requests across the instances. The reference design
+		// has a balancer doing exactly that; this wires past it.
+		{"a client calling a pool of instances directly", func(tp *model.Topology) {
+			tp.Edges = append(tp.Edges, model.Edge{From: "client", To: "api"})
+		}, model.ErrClientPool},
+
+		// And the same design once the pool is a single instance is accepted —
+		// see TestValidateAcceptsDesignsThatAreOrdinary. The rule is about
+		// there being a choice to make, not about clients and services.
 	}
 
 	for _, tt := range tests {
@@ -339,8 +351,14 @@ func TestValidateAcceptsDesignsThatAreOrdinary(t *testing.T) {
 		{"a service reading the database without a cache", func(tp *model.Topology) {
 			tp.Edges = append(tp.Edges, model.Edge{From: "api", To: "db"})
 		}},
-		{"a client talking straight to a service", func(tp *model.Topology) {
-			tp.Edges = append(tp.Edges, model.Edge{From: "client", To: "api"})
+		// A client may reach a service directly, so long as that service is a
+		// single instance: there is then nothing to choose between.
+		{"a client talking straight to a single service", func(tp *model.Topology) {
+			tp.Nodes = append(tp.Nodes, model.Node{
+				ID: "solo", Kind: model.KindService,
+				Service: &model.ServiceParams{Instances: 1, MeanService: 5},
+			})
+			tp.Edges = append(tp.Edges, model.Edge{From: "client", To: "solo"})
 		}},
 	}
 

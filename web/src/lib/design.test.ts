@@ -428,3 +428,51 @@ describe("whyNotRun", () => {
     expect(whyNotRun(design.topology)).toBeNull();
   });
 });
+
+// The twin of the rule that refuses fan-out: a pool of instances only behaves
+// like a pool if something is spreading requests across it, and a client is
+// outside the design, so nothing there can be.
+describe("a client calling a pool", () => {
+  function pooled(instances: number): Design {
+    const design = addNode(emptyDesign(), "service", { x: 0, y: 0 });
+    const service = design.topology.nodes.find((node) => node.id === "service");
+    if (service?.service === undefined) {
+      throw new Error("a new service arrived without its parameters");
+    }
+    return replaceNode(design, { ...service, service: { ...service.service, instances } });
+  }
+
+  it("refuses the connection, and says what to put in front", () => {
+    const why = whyNotConnect(pooled(4), "client", "service");
+    expect(why).toMatch(/runs 4 instances/);
+    expect(why).toMatch(/load balancer/);
+  });
+
+  it("allows it when there is only one instance to choose from", () => {
+    expect(whyNotConnect(pooled(1), "client", "service")).toBeNull();
+  });
+
+  // The other way in: the edge is legal when it is drawn and the design is
+  // edited into breaking it afterwards.
+  it("catches a pool grown under an edge that was already there", () => {
+    let design = connect(pooled(1), "client", "service");
+    expect(design.topology.edges).toHaveLength(1);
+    expect(whyNotRun(design.topology)).toBeNull();
+    const service = design.topology.nodes.find((node) => node.id === "service");
+    if (service?.service === undefined) {
+      throw new Error("the service lost its parameters");
+    }
+    design = replaceNode(design, { ...service, service: { ...service.service, instances: 8 } });
+    expect(whyNotRun(design.topology)).toMatch(/runs 8 instances/);
+  });
+
+  // A load balancer in front is the fix the message names, so it has to work.
+  it("is happy once a load balancer is doing the choosing", () => {
+    let design = addNode(pooled(4), "loadBalancer", { x: 0, y: 0 });
+    design = connect(design, "client", "loadBalancer");
+    design = connect(design, "loadBalancer", "service");
+    expect(design.topology.edges).toHaveLength(2);
+    expect(whyNotRun(design.topology)).toBeNull();
+  });
+});
+

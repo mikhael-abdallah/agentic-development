@@ -20,6 +20,7 @@ var (
 	ErrEdgeShape      = errors.New("edge is a self-loop or a duplicate")
 	ErrClientInbound  = errors.New("the client cannot receive traffic")
 	ErrEdgeKinds      = errors.New("this component cannot call that one")
+	ErrClientPool     = errors.New("a client cannot call a pool of instances directly")
 	ErrUnreachable    = errors.New("component cannot be reached from the client")
 	ErrCycle          = errors.New("requests would flow in a circle")
 	ErrWorkload       = errors.New("invalid workload")
@@ -132,8 +133,36 @@ func (t Topology) validateEdges(index map[string]Node) error {
 			return fmt.Errorf("%w: %s %q cannot call %s %q",
 				ErrEdgeKinds, from.Kind, e.From, to.Kind, e.To)
 		}
+		if err := clientToPool(from, to); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// clientToPool refuses a client wired straight to a service that runs more
+// than one instance.
+//
+// This is ErrFanOut's twin, one level down. Fan-out is refused because a
+// component with two things behind it has no defined answer for where a
+// request goes, and picking one silently would be an invention. A pool is the
+// same invention inside a single component: the simulation runs Instances
+// requests at once through one queue, which is only what a real pool does if
+// something is spreading requests evenly across the instances. A load balancer
+// is that something, and it is the component whose whole job this is.
+//
+// Only from a client, and the reason is not that the arithmetic differs. It is
+// that the client is the one component in a design nobody owns. A service
+// calling a pool may perfectly well be doing the spreading itself — a mesh
+// sidecar, a client-side balancer, a resolver handing out addresses — and this
+// engine has no way to tell whether it does. Load arriving from outside has no
+// such story available: there is nothing there to do it.
+func clientToPool(from, to Node) error {
+	if from.Kind != KindClient || to.Kind != KindService || to.Service.Instances <= 1 {
+		return nil
+	}
+	return fmt.Errorf("%w: %q runs %d instances and nothing chooses between them",
+		ErrClientPool, to.ID, to.Service.Instances)
 }
 
 // validateAcyclic rejects a design where requests could flow in a circle.
