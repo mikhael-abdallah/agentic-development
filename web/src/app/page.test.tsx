@@ -1,7 +1,21 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import Home from "./page";
+
+/**
+ * Load the design surface before any test waits for it.
+ *
+ * The page fetches it on demand, so whichever test needs it first pays for the
+ * module being transformed and imported — the canvas and the whole of
+ * `@xyflow/react`. On a cold CI runner that took longer than a default
+ * `waitFor` allows, and the failure it produced said "expected null not to be
+ * null", which reads as a broken page rather than as a slow import. Warming the
+ * registry once puts that cost where it belongs.
+ */
+beforeAll(async () => {
+  await import("@/features/canvas/Surface");
+});
 
 /** The canvas alone. Every kind names itself twice on this page — once in the
  *  palette and once on whatever was added — so a query that does not say which
@@ -20,9 +34,14 @@ function canvasOf(container: HTMLElement): HTMLElement {
  *  against the placeholder. */
 async function pageWithCanvas(): Promise<HTMLElement> {
   const { container } = render(<Home />);
-  await waitFor(() => {
-    expect(container.querySelector(".react-flow__node")).not.toBeNull();
-  });
+  // Generous, because what is being waited on is a module arriving, not an
+  // animation: a slow machine should make this test slow, never flaky.
+  await waitFor(
+    () => {
+      expect(container.querySelector(".react-flow__node")).not.toBeNull();
+    },
+    { timeout: 15_000 },
+  );
   return container;
 }
 
@@ -52,9 +71,12 @@ describe("Home", () => {
     const container = await pageWithCanvas();
     expect(container.querySelectorAll(".react-flow__node")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /Service/ }));
-    await waitFor(() => {
-      expect(container.querySelectorAll(".react-flow__node")).toHaveLength(2);
-    });
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll(".react-flow__node")).toHaveLength(2);
+      },
+      { timeout: 15_000 },
+    );
     expect(within(canvasOf(container)).getByText("Service")).toBeDefined();
   });
 });
