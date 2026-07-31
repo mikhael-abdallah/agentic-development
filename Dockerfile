@@ -14,11 +14,11 @@
 FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS engine
 
 WORKDIR /src/engine
-# The manifests alone first, so the module download is a cached layer that
-# survives every change to the source below it.
-COPY engine/go.mod engine/go.sum ./
-RUN go mod download
-
+# No separate manifest layer ahead of this one. The usual reason for it is to
+# cache `go mod download` across source changes, and the engine has no
+# third-party dependencies to download — there is no go.sum, which is why the
+# first attempt at this file failed to build. Put one back the day
+# engine/go.sum exists.
 COPY engine/ ./
 # CGO off and a static link, because the runtime image has no libc to link
 # against. -trimpath keeps the build directory out of the binary; -s -w drop
