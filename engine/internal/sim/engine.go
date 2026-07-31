@@ -14,11 +14,17 @@ import (
 // to avoid.
 var (
 	// ErrUnsupportedKind names a component whose behaviour has not landed.
-	// Load balancers, caches and databases follow in later changes.
+	// Caches and databases follow in a later change.
 	ErrUnsupportedKind = errors.New("the simulator does not model this component yet")
-	// ErrFanOut is the same kind of refusal: choosing between two downstream
-	// components is a load balancer's job, and that is what will lift it.
+	// ErrFanOut refuses a component that sends to several others without being
+	// able to choose between them. Choosing is a load balancer's job; anything
+	// else with two downstream components has no defined answer for where a
+	// request goes, and picking one silently would be an invention.
 	ErrFanOut = errors.New("a component sends to more than one other")
+	// ErrNoTargets is the opposite mistake: a load balancer with nothing
+	// behind it. It would answer every request itself, reporting a design that
+	// balances nothing as though it worked.
+	ErrNoTargets = errors.New("a load balancer has nothing to balance")
 	// ErrNoEntry catches a design whose load goes nowhere.
 	ErrNoEntry = errors.New("the client sends requests nowhere")
 )
@@ -39,16 +45,44 @@ type request struct {
 	read bool
 }
 
-// station is a component's runtime state: how many requests it can serve at
-// once, who is waiting, and where the finished ones go next.
+// station is a component's runtime state: how long it holds a request, how
+// many it can hold at once, who is waiting, and where the finished ones go.
+//
+// There is one station type rather than one per kind, because the differences
+// between the components are differences in these numbers. A load balancer is
+// a station that holds every request for a fixed moment and never makes one
+// wait; a service is a station with a limited number of servers and work it
+// draws fresh each time. Encoding that as data keeps newStation the only
+// place in the engine that has to know what a NodeKind is.
 type station struct {
-	id       string
+	id string
+	// next is where a served request goes. Empty means it completes here.
+	// More than one entry means something has to choose — see route.
+	next []string
+
+	// hold is how long the component keeps a request, and sampled says
+	// whether that is drawn fresh per request or added as it stands. It is
+	// the distinction params.go makes when it requires a service time to be
+	// positive and lets an overhead be zero: you cannot draw from a
+	// distribution whose mean is nothing, but you can add nothing.
+	hold    time.Duration
+	sampled bool
+
+	// servers is how many requests the component can hold at once, and
+	// capacity how many may wait for a free one. Zero means no limit, in
+	// both cases: a load balancer is a hop rather than a queue, so it never
+	// turns anything away, and an unbounded queue makes a design slow rather
+	// than lossy.
 	servers  int
-	mean     time.Duration
-	capacity int    // 0 means an unbounded queue
-	next     string // empty means a request completes here
-	busy     int
-	waiting  []*request
+	capacity int
+
+	// algorithm decides which of next receives a request, and rotation is the
+	// state round robin keeps between decisions.
+	algorithm model.Algorithm
+	rotation  int
+
+	busy    int
+	waiting []*request
 }
 
 type engine struct {
@@ -122,26 +156,80 @@ func newEngine(t model.Topology, w model.Workload) (*engine, error) {
 }
 
 func newStation(n model.Node, downstream []string) (*station, error) {
-	if len(downstream) > 1 {
-		return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
-	}
-	next := ""
-	if len(downstream) == 1 {
-		next = downstream[0]
-	}
 	switch n.Kind {
+	case model.KindLoadBalancer:
+		if len(downstream) == 0 {
+			return nil, fmt.Errorf("%w: %q sends to nothing", ErrNoTargets, n.ID)
+		}
+		return &station{
+			id:        n.ID,
+			next:      downstream,
+			hold:      n.LoadBalancer.Overhead.Duration(),
+			algorithm: n.LoadBalancer.Algorithm,
+		}, nil
 	case model.KindService:
+		if len(downstream) > 1 {
+			return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
+		}
 		return &station{
 			id:       n.ID,
+			next:     downstream,
+			hold:     n.Service.MeanService.Duration(),
+			sampled:  true,
 			servers:  n.Service.Instances,
-			mean:     n.Service.MeanService.Duration(),
 			capacity: n.Service.QueueCapacity,
-			next:     next,
 		}, nil
-	case model.KindClient, model.KindLoadBalancer, model.KindCache, model.KindDatabase:
+	case model.KindClient, model.KindCache, model.KindDatabase:
 		return nil, fmt.Errorf("%w: %s (%q)", ErrUnsupportedKind, n.Kind, n.ID)
 	}
+	// Unreachable: Validate rejects any kind outside the cases above. The
+	// switch carries no default so that `exhaustive` fails the build when a
+	// kind is added to model without a behaviour being written for it here —
+	// a component that silently does nothing is the one outcome this package
+	// refuses to produce.
 	return nil, fmt.Errorf("%w: %s (%q)", ErrUnsupportedKind, n.Kind, n.ID)
+}
+
+// route picks which of a station's downstream components receives a request.
+//
+// The algorithms differ only when the choices differ — under identical
+// service times and an even arrival stream they all spread load the same way.
+// The reason a design picks one is what happens when that stops being true,
+// so what matters here is that each is faithful about which node it prefers.
+func (e *engine) route(st *station) string {
+	if len(st.next) == 1 {
+		return st.next[0]
+	}
+	switch st.algorithm {
+	case model.RoundRobin:
+		next := st.next[st.rotation%len(st.next)]
+		st.rotation++
+		return next
+	case model.LeastConnections:
+		// Ties go to the earliest entry rather than to whichever the map
+		// happened to yield: with an even load and identical components every
+		// choice is a tie, and "the first one" is at least reproducible.
+		best, fewest := st.next[0], e.inFlight(st.next[0])
+		for _, id := range st.next[1:] {
+			if n := e.inFlight(id); n < fewest {
+				best, fewest = id, n
+			}
+		}
+		return best
+	case model.RandomChoice:
+		return st.next[e.rng.stream(st.id).IntN(len(st.next))]
+	}
+	// Unreachable for the same reason as newStation: Validate accepts only the
+	// algorithms above, and the missing default is what makes adding a fourth
+	// a build failure rather than a silent fallback to the first node.
+	return st.next[0]
+}
+
+// inFlight is how many requests a component is holding — being served and
+// waiting to be. It is what "least connections" counts.
+func (e *engine) inFlight(id string) int {
+	st := e.stations[id]
+	return st.busy + len(st.waiting)
 }
 
 // run drives the clock from event to event until nothing is left to happen.
@@ -189,7 +277,7 @@ func (e *engine) scheduleArrival(after time.Duration) {
 // the queue, or nowhere at all if the queue is full.
 func (e *engine) admit(id string, req *request) {
 	st := e.stations[id]
-	if st.busy < st.servers {
+	if st.servers == 0 || st.busy < st.servers {
 		st.busy++
 		e.startService(st, req)
 		return
@@ -204,8 +292,12 @@ func (e *engine) admit(id string, req *request) {
 }
 
 func (e *engine) startService(st *station, req *request) {
+	hold := st.hold
+	if st.sampled {
+		hold = exponential(e.rng.stream(st.id), st.hold)
+	}
 	e.schedule(event{
-		at:      e.clock + exponential(e.rng.stream(st.id), st.mean),
+		at:      e.clock + hold,
 		kind:    serviceDone,
 		station: st.id,
 		req:     req,
@@ -216,10 +308,10 @@ func (e *engine) startService(st *station, req *request) {
 // has been waiting longest.
 func (e *engine) finish(id string, req *request) {
 	st := e.stations[id]
-	if st.next == "" {
+	if len(st.next) == 0 {
 		e.complete(req)
 	} else {
-		e.admit(st.next, req)
+		e.admit(e.route(st), req)
 	}
 	if len(st.waiting) == 0 {
 		st.busy--
