@@ -6,6 +6,7 @@ import { Numbers } from "@/components/Field";
 import { Results } from "@/features/simulation/Results";
 import { type SimulationResult, simulate } from "@/features/simulation/client";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
+import { whyNotRun } from "@/lib/design";
 import { type Topology, type Workload, defaultWorkload } from "@/lib/topology";
 
 interface SimulationPanelProps {
@@ -24,6 +25,10 @@ type Run =
 export function SimulationPanel({ topology }: SimulationPanelProps) {
   const [workload, setWorkload] = useState<Workload>(defaultWorkload);
   const [run, setRun] = useState<Run>({ status: "idle" });
+  // What stops this design being run at all, asked before the button rather
+  // than discovered by pressing it. The engine checks the same things and more
+  // on every run; this is the subset a design can drift into while it is drawn.
+  const blocked = whyNotRun(topology);
 
   const start = () => {
     setRun({ status: "running" });
@@ -52,10 +57,17 @@ export function SimulationPanel({ topology }: SimulationPanelProps) {
         type="button"
         className="simulation__run"
         onClick={start}
-        disabled={run.status === "running"}
+        disabled={run.status === "running" || blocked !== null}
       >
         {run.status === "running" ? "Running…" : "Run simulation"}
       </button>
+      {/* Why the button is off, next to the button. A control that is disabled
+          and says nothing is indistinguishable from one that is broken — which
+          is the shape the canvas was in when the client could not be deleted
+          at all. */}
+      <p className="simulation__blocked" role="status">
+        {blocked ?? ""}
+      </p>
       <p className="simulation__error" role="alert">
         {run.status === "failed" ? run.reason : ""}
       </p>

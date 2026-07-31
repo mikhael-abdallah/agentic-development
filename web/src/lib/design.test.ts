@@ -16,7 +16,7 @@ import {
   selectNode,
   uniqueId,
   whyNotConnect,
-  whyNotRemove,
+  whyNotRun,
 } from "@/lib/design";
 import type { Scenario } from "@/lib/topology";
 
@@ -85,7 +85,7 @@ describe("addNode", () => {
   });
 });
 
-describe("removeNode", () => {
+describe("removeNode leaving the design consistent", () => {
   it("takes the component's edges with it", () => {
     const design = removeNode(chain(), "service");
     expect(design.topology.nodes.map((node) => node.id)).toEqual(["client", "database"]);
@@ -358,32 +358,27 @@ describe("componentSignature", () => {
   });
 });
 
-// React Flow deletes on a keypress of its own, without consulting the design,
-// so this rule is what keeps Backspace from taking the client and leaving a
-// design nothing can put load through.
-describe("whyNotRemove", () => {
-  it("refuses the client, and says why", () => {
-    expect(whyNotRemove(chain(), "client")).toMatch(/load comes from/);
+// The client was the one component that could not be removed. It can now: a
+// design being drawn is allowed to be unfinished, and the rule that a run needs
+// a client lives in `whyNotRun`, where it is actually true.
+describe("removeNode taking the client", () => {
+  it("removes the client, and the edges it was on", () => {
+    const design = removeNode(chain(), "client");
+    expect(design.topology.nodes.map((node) => node.id)).toEqual(["service", "database"]);
+    expect(design.topology.edges).toEqual([{ from: "service", to: "database" }]);
+    expect(design.positions.has("client")).toBe(false);
   });
 
-  it("allows anything else", () => {
-    expect(whyNotRemove(chain(), "service")).toBeNull();
-    expect(whyNotRemove(chain(), "database")).toBeNull();
-  });
-
-  it("refuses a component that is not in the design", () => {
-    expect(whyNotRemove(chain(), "nowhere")).not.toBeNull();
+  it("leaves a design that can be run again once a client is put back", () => {
+    let design = removeNode(chain(), "client");
+    expect(whyNotRun(design.topology)).toMatch(/no client/);
+    design = addNode(design, "client", { x: 0, y: 0 });
+    design = connect(design, "client", "service");
+    expect(whyNotRun(design.topology)).toBeNull();
   });
 });
 
-describe("removeNode refusing", () => {
-  it("keeps the client when something tries to remove it", () => {
-    const before = chain();
-    const after = removeNode(before, "client");
-    expect(after).toBe(before);
-    expect(after.topology.nodes.map((node) => node.id)).toContain("client");
-  });
-
+describe("removeNode", () => {
   it("still removes the edges of a component it does remove", () => {
     const design = removeNode(chain(), "service");
     expect(design.topology.nodes.map((node) => node.id)).toEqual(["client", "database"]);
@@ -393,5 +388,43 @@ describe("removeNode refusing", () => {
   it("keeps the design untouched when the component is not there", () => {
     const before = chain();
     expect(removeNode(before, "nowhere")).toBe(before);
+  });
+});
+
+// What a design can drift into while it is being drawn. Every one of these is
+// also refused by the engine — this is here so the Run button can say which,
+// rather than being pressed to find out.
+describe("whyNotRun", () => {
+  it("allows a design that is wired up", () => {
+    expect(whyNotRun(chain().topology)).toBeNull();
+  });
+
+  it("names the missing client", () => {
+    expect(whyNotRun(removeNode(chain(), "client").topology)).toMatch(/no client/);
+  });
+
+  it("refuses a second client, because a run has one place to start", () => {
+    const two = addNode(chain(), "client", { x: 0, y: 0 });
+    expect(two.topology.nodes.filter((node) => node.kind === "client")).toHaveLength(2);
+    expect(whyNotRun(two.topology)).toMatch(/more than one client/);
+  });
+
+  it("refuses a client wired to nothing", () => {
+    const design = disconnect(chain(), "client", "service");
+    expect(whyNotRun(design.topology)).toMatch(/not connected to anything/);
+  });
+
+  // A component nothing reaches contributes nothing and says nothing about it:
+  // its absence from the results reads as "not a bottleneck".
+  it("names a component the client cannot reach", () => {
+    const design = addNode(chain(), "cache", { x: 0, y: 0 });
+    expect(whyNotRun(design.topology)).toMatch(/Nothing reaches Cache/);
+  });
+
+  it("stops naming it once it is wired in", () => {
+    let design = addNode(chain(), "cache", { x: 0, y: 0 });
+    design = connect(design, "service", "cache");
+    expect(design.topology.edges).toHaveLength(3);
+    expect(whyNotRun(design.topology)).toBeNull();
   });
 });

@@ -212,10 +212,6 @@ interface InspectorProps {
   readonly wiring: { incoming: Contract[]; outgoing: Contract[] };
   readonly onChange: (node: DesignNode) => void;
   readonly onRemove: (id: string) => void;
-  /** Why this component cannot be removed, or null if it can. Computed by
-   *  `whyNotRemove` rather than re-derived here, so the canvas and this panel
-   *  cannot come to different conclusions about the same component. */
-  readonly cannotRemove: string | null;
 }
 
 /**
@@ -227,7 +223,7 @@ interface InspectorProps {
  * and an arrival rate look like two settings of the same thing — one of which
  * would silently belong to a component nobody remembers selecting.
  */
-export function Inspector({ node, wiring, onChange, onRemove, cannotRemove }: InspectorProps) {
+export function Inspector({ node, wiring, onChange, onRemove }: InspectorProps) {
   return (
     <aside className="panel inspector" aria-label="Component settings" data-kind={node?.kind}>
       <p className="panel__scope">Selected component</p>
@@ -265,19 +261,15 @@ export function Inspector({ node, wiring, onChange, onRemove, cannotRemove }: In
             empty="Nothing behind it. Requests that reach here end here."
             contracts={wiring.outgoing}
           />
-          {cannotRemove === null ? (
-            <button
-              type="button"
-              className="inspector__remove"
-              onClick={() => {
-                onRemove(node.id);
-              }}
-            >
-              Remove this component
-            </button>
-          ) : (
-            <p className="field__hint">{cannotRemove}</p>
-          )}
+          <button
+            type="button"
+            className="inspector__remove"
+            onClick={() => {
+              onRemove(node.id);
+            }}
+          >
+            Remove this component
+          </button>
         </>
       )}
     </aside>

@@ -70,10 +70,6 @@ export function toFlowNodes(design: Design, sizes: Sizes): ComponentNode[] {
     type: "component",
     position: design.positions.get(node.id) ?? { x: 0, y: 0 },
     selected: design.selected === node.id,
-    // React Flow deletes on a keypress of its own, without asking the design.
-    // Saying so here is what stops Backspace from taking the client with it
-    // and leaving a design nothing can put load through.
-    deletable: node.kind !== "client",
     measured: sizes.get(node.id),
     data: {
       kind: node.kind,
