@@ -89,8 +89,16 @@ fetch_tool() {
 # those and every gate re-runs.
 # shellcheck disable=SC2034 # read by the guards that source this file
 GO_GUARD_SCOPE='^(engine/|scripts/|\.github/)'
+# The web scope reaches across into the engine's embedded scenarios, and that
+# is not a convenience. web/src/lib/topology.test.ts reads
+# engine/internal/model/scenarios/*.json off disk and checks every key in it
+# against the hand-written TypeScript mirror of the Go contract. Without this,
+# a PR that touches only Go skips every web gate — so a field added to a
+# scenario on the engine side merges green with the mirror already drifted, and
+# main is red for whoever next touches a web file. That has happened. It was
+# caught in review rather than by a gate, which is the wrong way round.
 # shellcheck disable=SC2034 # read by the guards that source this file
-WEB_GUARD_SCOPE='^(web/|scripts/|\.github/)'
+WEB_GUARD_SCOPE='^(web/|scripts/|\.github/|engine/internal/model/scenarios/)'
 
 # guard_applies NAME SCOPE_REGEX — 0 when this guard has work to do, 1 (with
 # an explanatory line) when nothing in its scope changed. A front-end-only PR

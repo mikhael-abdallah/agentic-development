@@ -33,9 +33,13 @@ import {
  * the repository boundary the ESLint rules exist to keep closed, and because
  * reading is the honest test: the bytes Go embeds are the bytes checked.
  *
- * The one thing it cannot do is fail on a Go-only change, since the web gates
- * skip when no web file changed. It catches drift the next time this side is
- * touched, which for a hand-mirrored contract is the moment it matters.
+ * It used to have one hole, and it was the dangerous one: the web gates skip
+ * when no web file changed, so a field added to the scenario on the Go side
+ * merged green with the mirror already drifted, and main was red for whoever
+ * next touched a web file. That happened, and it was caught in review rather
+ * than by a gate. `WEB_GUARD_SCOPE` now reaches into
+ * `engine/internal/model/scenarios/`, so a change to the bytes this test reads
+ * is a change that runs this test.
  */
 const PRESET = join(
   import.meta.dirname,

@@ -94,8 +94,9 @@ git init -q -b main "$work/upstream"
   cd "$work/upstream"
   git config user.name test
   git config user.email test@test
-  mkdir -p engine web scripts
+  mkdir -p engine/internal/model/scenarios web scripts
   echo x > engine/seed.go
+  echo x > engine/internal/model/scenarios/seed.json
   echo x > web/seed.ts
   echo x > scripts/seed.sh
   echo x > README.md
@@ -127,6 +128,19 @@ check "engine change skips the web gate" 1 guard_applies web-lint "$WEB_GUARD_SC
 on_branch docs-only README.md
 check "docs change skips the go gate" 1 guard_applies go-lint "$GO_GUARD_SCOPE"
 check "docs change skips the web gate" 1 guard_applies web-lint "$WEB_GUARD_SCOPE"
+
+# The embedded scenarios are in both scopes. They live under engine/, but
+# web/src/lib/topology.test.ts reads them off disk to check the hand-written
+# TypeScript mirror against the Go contract — so a scenario changed on the Go
+# side with the web gates skipped merges green with the mirror already drifted.
+on_branch scenario-only engine/internal/model/scenarios/seed.json
+check "a scenario change runs the go gate" 0 guard_applies go-lint "$GO_GUARD_SCOPE"
+check "a scenario change runs the web gate" 0 guard_applies web-lint "$WEB_GUARD_SCOPE"
+
+# ...and the rest of engine/ still does not, or the scoping would buy nothing.
+on_branch engine-not-scenarios engine/seed.go
+check "an engine change that is not a scenario still skips the web gate" 1 \
+  guard_applies web-lint "$WEB_GUARD_SCOPE"
 
 # Guard plumbing is in both scopes: change how a gate runs and every gate runs.
 on_branch guard-change scripts/seed.sh
