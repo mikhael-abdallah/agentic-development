@@ -153,3 +153,14 @@ describe("applyEdits", () => {
     expect(controller.unlink).toHaveBeenCalledExactlyOnceWith("c", "d");
   });
 });
+
+// React Flow honours `deletable` itself, on the Backspace it handles without
+// asking the design. Marking the client is what closes that path.
+describe("toFlowNodes deletability", () => {
+  it("marks the client as the one component that cannot be deleted", () => {
+    const design = addNode(emptyDesign(), "cache", { x: 0, y: 0 });
+    const flow = toFlowNodes(design);
+    expect(flow.find((node) => node.id === "client")?.deletable).toBe(false);
+    expect(flow.find((node) => node.id === "cache")?.deletable).toBe(true);
+  });
+});
