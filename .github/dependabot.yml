@@ -21,8 +21,8 @@ updates:
           - "*"
   # The Dockerfile pins its base images by digest, which is what makes a
   # rebuild reproducible — and also what stops it from ever picking up a
-  # patched base on its own. Without this entry those three digests would
-  # silently become the oldest dependency in the repository.
+  # patched base on its own. Without this entry those digests would silently
+  # become the oldest dependency in the repository.
   - package-ecosystem: docker
     directory: /
     schedule:
@@ -33,6 +33,23 @@ updates:
       docker:
         patterns:
           - "*"
+    # The two builder stages are not dependabot's to move. Their versions are
+    # owned by scripts/guards/go-env.sh and web-env.sh, which are what the
+    # gates actually run — bumping one here alone produces an image built with
+    # a toolchain nothing has checked. PR #73 was exactly that: node
+    # 24.18.1 -> 26.5.0 in the Dockerfile and nowhere else.
+    #
+    # Their digests going stale costs nothing, because neither image ships:
+    # they compile, and the artifact is a static binary plus a directory of
+    # assets copied into distroless. That runtime image is the only base with
+    # anything of its own in the layer someone can reach, and it is the one
+    # this entry still watches.
+    #
+    # A toolchain bump is a change to those two scripts, made deliberately,
+    # with the Dockerfile following in the same pull request.
+    ignore:
+      - dependency-name: golang
+      - dependency-name: node
   - package-ecosystem: gomod
     directory: /engine
     schedule:
