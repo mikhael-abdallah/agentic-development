@@ -2,6 +2,7 @@
 
 import { DesignCanvas } from "@/features/canvas/DesignCanvas";
 import { useDesign } from "@/features/canvas/useDesign";
+import { Inspector } from "@/features/inspector/Inspector";
 import { Palette } from "@/features/palette/Palette";
 
 /** Where a component clicked rather than dragged lands. Roughly the middle of
@@ -24,6 +25,12 @@ export default function Home() {
           }}
         />
         <DesignCanvas controller={controller} />
+        <Inspector
+          node={controller.design.topology.nodes.find(
+            (node) => node.id === controller.design.selected,
+          )}
+          onChange={controller.replace}
+        />
       </div>
     </main>
   );
