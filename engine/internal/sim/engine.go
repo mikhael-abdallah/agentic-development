@@ -8,14 +8,19 @@ import (
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/model"
 )
 
-// What this core cannot simulate yet. Each is an explicit refusal rather than
-// a component quietly doing nothing, because a design that reports numbers
-// while ignoring half of itself is the failure this whole repository is built
-// to avoid.
+// What this core refuses to run. Each is an explicit refusal rather than a
+// component quietly doing nothing, because a design that reports numbers while
+// ignoring half of itself is the failure this whole repository is built to
+// avoid.
+//
+// Every kind in the model now has behaviour here, so none of these is "not
+// implemented yet" any more. They are designs that have no defined answer.
 var (
-	// ErrUnsupportedKind names a component whose behaviour has not landed.
-	// Databases follow in a later change.
-	ErrUnsupportedKind = errors.New("the simulator does not model this component yet")
+	// ErrNotAStation names a kind that cannot hold a request at all. The
+	// client is where load comes from rather than a component load passes
+	// through, and newEngine never asks for one — reaching this means the
+	// engine and the model disagree about what a component is.
+	ErrNotAStation = errors.New("this component cannot hold a request")
 	// ErrFanOut refuses a component that sends to several others without being
 	// able to choose between them. Choosing is a load balancer's job; anything
 	// else with two downstream components has no defined answer for where a
@@ -44,53 +49,6 @@ type request struct {
 	// needs it keeps a request's identity fixed for its whole journey — it
 	// cannot be a read at the cache and a write at the database behind it.
 	read bool
-}
-
-// station is a component's runtime state: how long it holds a request, how
-// many it can hold at once, who is waiting, and where the finished ones go.
-//
-// There is one station type rather than one per kind, because the differences
-// between the components are differences in these numbers. A load balancer is
-// a station that holds every request for a fixed moment and never makes one
-// wait; a service is a station with a limited number of servers and work it
-// draws fresh each time. Encoding that as data keeps newStation the only
-// place in the engine that has to know what a NodeKind is.
-type station struct {
-	id string
-	// next is where a served request goes. Empty means it completes here.
-	// More than one entry means something has to choose — see route.
-	next []string
-
-	// hold is how long the component keeps a request, and sampled says
-	// whether that is drawn fresh per request or added as it stands. It is
-	// the distinction params.go makes when it requires a service time to be
-	// positive and lets an overhead be zero: you cannot draw from a
-	// distribution whose mean is nothing, but you can add nothing.
-	hold    time.Duration
-	sampled bool
-
-	// servers is how many requests the component can hold at once, and
-	// capacity how many may wait for a free one. Zero means no limit, in
-	// both cases: a load balancer is a hop rather than a queue, so it never
-	// turns anything away, and an unbounded queue makes a design slow rather
-	// than lossy.
-	servers  int
-	capacity int
-
-	// algorithm decides which of next receives a request, and rotation is the
-	// state round robin keeps between decisions.
-	algorithm model.Algorithm
-	rotation  int
-
-	// answers is whether the component can satisfy a request itself instead
-	// of passing it on, and hitRatio how often it manages to. A cache is the
-	// only component that can; everything else forwards, or is the end of the
-	// line because nothing is behind it.
-	answers  bool
-	hitRatio float64
-
-	busy    int
-	waiting []*request
 }
 
 type engine struct {
@@ -163,58 +121,6 @@ func newEngine(t model.Topology, w model.Workload) (*engine, error) {
 	}, nil
 }
 
-func newStation(n model.Node, downstream []string) (*station, error) {
-	switch n.Kind {
-	case model.KindLoadBalancer:
-		if len(downstream) == 0 {
-			return nil, fmt.Errorf("%w: %q sends to nothing", ErrNoTargets, n.ID)
-		}
-		return &station{
-			id:        n.ID,
-			next:      downstream,
-			hold:      n.LoadBalancer.Overhead.Duration(),
-			algorithm: n.LoadBalancer.Algorithm,
-		}, nil
-	case model.KindService:
-		if len(downstream) > 1 {
-			return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
-		}
-		return &station{
-			id:       n.ID,
-			next:     downstream,
-			hold:     n.Service.MeanService.Duration(),
-			sampled:  true,
-			servers:  n.Service.Instances,
-			capacity: n.Service.QueueCapacity,
-		}, nil
-	case model.KindCache:
-		// A cache is a lookup, not a queue: it holds every request for the
-		// same moment and holds none of them back. What it decides is not how
-		// long a request waits but whether the request goes any further.
-		if len(downstream) == 0 {
-			return nil, fmt.Errorf("%w: %q sends to nothing", ErrNoTargets, n.ID)
-		}
-		if len(downstream) > 1 {
-			return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
-		}
-		return &station{
-			id:       n.ID,
-			next:     downstream,
-			hold:     n.Cache.HitLatency.Duration(),
-			answers:  true,
-			hitRatio: n.Cache.HitRatio,
-		}, nil
-	case model.KindClient, model.KindDatabase:
-		return nil, fmt.Errorf("%w: %s (%q)", ErrUnsupportedKind, n.Kind, n.ID)
-	}
-	// Unreachable: Validate rejects any kind outside the cases above. The
-	// switch carries no default so that `exhaustive` fails the build when a
-	// kind is added to model without a behaviour being written for it here —
-	// a component that silently does nothing is the one outcome this package
-	// refuses to produce.
-	return nil, fmt.Errorf("%w: %s (%q)", ErrUnsupportedKind, n.Kind, n.ID)
-}
-
 // route picks which of a station's downstream components receives a request.
 //
 // The algorithms differ only when the choices differ — under identical
@@ -250,11 +156,9 @@ func (e *engine) route(st *station) string {
 	return st.next[0]
 }
 
-// inFlight is how many requests a component is holding — being served and
-// waiting to be. It is what "least connections" counts.
+// inFlight is how many requests a named component is holding.
 func (e *engine) inFlight(id string) int {
-	st := e.stations[id]
-	return st.busy + len(st.waiting)
+	return e.stations[id].inFlight()
 }
 
 // run drives the clock from event to event until nothing is left to happen.
@@ -275,7 +179,7 @@ func (e *engine) run() Result {
 			}
 			e.admit(e.entry, ev.req)
 		case serviceDone:
-			e.finish(ev.station, ev.req)
+			e.finish(ev.station, ev.server, ev.req)
 		}
 	}
 	return e.summarise()
@@ -298,13 +202,12 @@ func (e *engine) scheduleArrival(after time.Duration) {
 	})
 }
 
-// admit puts a request into a component: straight onto a free server, into
-// the queue, or nowhere at all if the queue is full.
+// admit puts a request into a component: straight onto a server with room for
+// it, into the queue, or nowhere at all if the queue is full.
 func (e *engine) admit(id string, req *request) {
 	st := e.stations[id]
-	if st.servers == 0 || st.busy < st.servers {
-		st.busy++
-		e.startService(st, req)
+	if server := st.seat(req); server >= 0 {
+		e.startService(st, server, req)
 		return
 	}
 	if st.capacity > 0 && len(st.waiting) >= st.capacity {
@@ -316,35 +219,53 @@ func (e *engine) admit(id string, req *request) {
 	st.waiting = append(st.waiting, req)
 }
 
-func (e *engine) startService(st *station, req *request) {
+func (e *engine) startService(st *station, server int, req *request) {
+	st.slots[server]++
 	hold := st.hold
+	if !req.read {
+		hold = st.holdWrite
+	}
 	if st.sampled {
-		hold = exponential(e.rng.stream(st.id), st.hold)
+		hold = exponential(e.rng.stream(st.id), hold)
 	}
 	e.schedule(event{
 		at:      e.clock + hold,
 		kind:    serviceDone,
 		station: st.id,
+		server:  server,
 		req:     req,
 	})
 }
 
-// finish hands a served request onward and gives the freed server to whoever
-// has been waiting longest.
-func (e *engine) finish(id string, req *request) {
+// finish hands a served request onward and gives the freed connection to
+// whoever has been waiting for one.
+func (e *engine) finish(id string, server int, req *request) {
 	st := e.stations[id]
 	if len(st.next) == 0 || e.answered(st, req) {
 		e.complete(req)
 	} else {
 		e.admit(e.route(st), req)
 	}
-	if len(st.waiting) == 0 {
-		st.busy--
-		return
+	st.slots[server]--
+	e.startWaiting(st)
+}
+
+// startWaiting hands the connection just freed to the first request in the
+// queue that can use it.
+//
+// The first that *can*, rather than simply the first. A write waits for the
+// primary, and letting one at the head of the queue hold up the reads behind
+// it while a replica sits idle would be a queueing policy nobody chose. Where
+// every server is interchangeable — which is everything but a database — the
+// first that can use it is always the head, and this is plain FIFO.
+func (e *engine) startWaiting(st *station) {
+	for i, req := range st.waiting {
+		if server := st.seat(req); server >= 0 {
+			st.waiting = append(st.waiting[:i], st.waiting[i+1:]...)
+			e.startService(st, server, req)
+			return
+		}
 	}
-	waiting := st.waiting[0]
-	st.waiting = st.waiting[1:]
-	e.startService(st, waiting)
 }
 
 // answered reports whether the component satisfied the request itself, so

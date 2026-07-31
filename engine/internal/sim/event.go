@@ -21,8 +21,12 @@ type event struct {
 	seq  uint64
 	kind eventKind
 	// station is where the event happens; empty for an arrival, which has not
-	// reached a component yet.
+	// reached a component yet. server is which of that component's servers is
+	// holding the request, so that finishing gives the connection back to the
+	// one that lent it — a read served by a replica must not free a slot on
+	// the primary.
 	station string
+	server  int
 	req     *request
 }
 
