@@ -8,7 +8,7 @@ The premise: code here is written by AI agents, not reviewed line-by-line by me.
 
 `main` is protected: changes land only through pull requests, no direct pushes,
 no force pushes, squash merges only. Auto-merge is on — a green PR merges
-itself, a red one goes back to the agent. **20 status checks** are required
+itself, a red one goes back to the agent. **21 status checks** are required
 before that can happen.
 
 They exist in four groups, each answering a different question.
@@ -60,6 +60,13 @@ Every guard is a script in `scripts/guards/`, run identically by CI and by the
 pre-push hook, so a doomed push never reaches the runner. The guards have their
 own test suites — they share a failure mode where a broken check and a passing
 one look exactly alike.
+
+The exception is `docker-build`, which builds the image and runs it: no shell
+in it, not running as root, the page served, the shipped scenario simulated
+through the API the image serves. It cannot have a local counterpart — the
+self-hosted runner has no Docker — so it lives in its own workflow rather than
+making `parity-check` carry an exception. It earned its place on its first run,
+by failing: twenty checks had passed on a Dockerfile that could not build.
 
 ## Running the simulator
 
