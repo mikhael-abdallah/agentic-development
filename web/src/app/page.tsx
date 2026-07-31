@@ -4,6 +4,7 @@ import { DesignCanvas } from "@/features/canvas/DesignCanvas";
 import { useDesign } from "@/features/canvas/useDesign";
 import { Inspector } from "@/features/inspector/Inspector";
 import { Palette } from "@/features/palette/Palette";
+import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 
 /** Where a component clicked rather than dragged lands. Roughly the middle of
  *  the opening view, so it arrives on screen without landing on the client. */
@@ -25,12 +26,15 @@ export default function Home() {
           }}
         />
         <DesignCanvas controller={controller} />
-        <Inspector
-          node={controller.design.topology.nodes.find(
-            (node) => node.id === controller.design.selected,
-          )}
-          onChange={controller.replace}
-        />
+        <div className="workspace__side">
+          <Inspector
+            node={controller.design.topology.nodes.find(
+              (node) => node.id === controller.design.selected,
+            )}
+            onChange={controller.replace}
+          />
+          <SimulationPanel topology={controller.design.topology} />
+        </div>
       </div>
     </main>
   );

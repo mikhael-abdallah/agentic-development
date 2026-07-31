@@ -262,3 +262,145 @@ body {
   line-height: 1.35;
   color: var(--muted);
 }
+
+/* --- simulation ------------------------------------------------------ */
+
+.workspace__side {
+  width: 19rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.workspace__side .inspector {
+  width: auto;
+  border-left: none;
+  overflow: visible;
+}
+
+.simulation {
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.simulation__title {
+  margin: 0 0 0.6rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.simulation__run {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--panel);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.simulation__run:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.simulation__error {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--database);
+}
+
+.simulation__error:empty {
+  display: none;
+}
+
+.results {
+  margin-top: 1rem;
+}
+
+.results__heading {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.results__headline,
+.results__latency {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  margin: 0;
+}
+
+.results__headline dt,
+.results__latency dt {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.results__headline dd,
+.results__latency dd {
+  margin: 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.results__headline dd[data-bad="true"] {
+  color: var(--database);
+  font-weight: 600;
+}
+
+.results__nodes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.results__node {
+  display: grid;
+  grid-template-columns: 6rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.results__node[data-bottleneck="true"] .results__node-id {
+  font-weight: 700;
+  color: var(--database);
+}
+
+.results__node-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results__node-figure {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.results__bar {
+  height: 0.5rem;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0 var(--fill, 0%),
+    var(--line) var(--fill, 0%) 100%
+  );
+}
