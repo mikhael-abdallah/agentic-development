@@ -29,9 +29,7 @@ export type Algorithm = (typeof ALGORITHMS)[number];
  * different answers about when a write is done.
  */
 export const WRITE_POLICIES = ["writeThrough", "writeAround", "writeBack"] as const;
-// Not exported yet: nothing outside this file names the type until there is a
-// control that sets one. knip fails the build on an export nothing imports.
-type WritePolicy = (typeof WRITE_POLICIES)[number];
+export type WritePolicy = (typeof WRITE_POLICIES)[number];
 
 export interface LoadBalancerParams {
   algorithm: Algorithm;

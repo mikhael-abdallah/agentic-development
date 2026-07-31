@@ -162,3 +162,71 @@ describe("Inspector saying whose settings these are", () => {
     expect(screen.getByRole("heading", { name: "Nothing selected" })).toBeDefined();
   });
 });
+
+// The one parameter whose cost the simulator does not measure, so the panel
+// has to say what it is rather than leaving the numbers to recommend.
+describe("Inspector choosing how writes go past a cache", () => {
+  function cacheInspector(onChange = vi.fn()) {
+    render(
+      <Inspector
+        node={newNode("cache", "cache")}
+        wiring={NO_WIRING}
+        onChange={onChange}
+        onRemove={vi.fn()}
+        cannotRemove={null}
+      />,
+    );
+    return onChange;
+  }
+
+  it("offers every policy the engine accepts", () => {
+    cacheInspector();
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["write through", "write around", "write back"]);
+  });
+
+  it("starts on the policy a new cache has", () => {
+    cacheInspector();
+    expect(screen.getByLabelText<HTMLSelectElement>("Writes").value).toBe("writeThrough");
+  });
+
+  it("changes the policy without disturbing the rest of the cache", () => {
+    const onChange = cacheInspector();
+    fireEvent.change(screen.getByLabelText("Writes"), { target: { value: "writeBack" } });
+    const sent = onChange.mock.calls[0]?.[0] as DesignNode;
+    expect(sent.cache?.writePolicy).toBe("writeBack");
+    expect(sent.cache?.hitRatio).toBe(newNode("cache", "cache").cache?.hitRatio);
+  });
+
+  // Write-back makes a saturated database look idle. Showing that without
+  // showing what it costs would be a recommendation on complete evidence and
+  // the wrong recommendation.
+  it("says what each policy costs, including the part it cannot measure", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <Inspector
+        node={newNode("cache", "cache")}
+        wiring={NO_WIRING}
+        onChange={onChange}
+        onRemove={vi.fn()}
+        cannotRemove={null}
+      />,
+    );
+    const node = newNode("cache", "cache");
+    for (const [policy, expected] of [
+      ["writeAround", /Staleness is not simulated/],
+      ["writeBack", /durability/],
+    ] as const) {
+      rerender(
+        <Inspector
+          node={{ ...node, cache: { ...node.cache, writePolicy: policy } as never }}
+          wiring={NO_WIRING}
+          onChange={onChange}
+          onRemove={vi.fn()}
+          cannotRemove={null}
+        />,
+      );
+      expect(screen.getByText(expected)).toBeDefined();
+    }
+  });
+});
