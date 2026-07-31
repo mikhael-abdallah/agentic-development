@@ -22,7 +22,7 @@
         "id": "cache",
         "kind": "cache",
         "label": "Key cache",
-        "cache": {"hitRatio": 0.85, "hitLatencyMs": 0.5}
+        "cache": {"hitRatio": 0.85, "hitLatencyMs": 0.5, "writePolicy": "writeThrough"}
       },
       {
         "id": "db",

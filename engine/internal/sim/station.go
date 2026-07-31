@@ -74,6 +74,11 @@ type station struct {
 	// line because nothing is behind it.
 	answers  bool
 	hitRatio float64
+	// absorbsWrit is write-back: the cache acknowledges a write and the store
+	// catches up outside the request. The request stops here, so the store
+	// never sees it inside the measured window — which is the whole effect
+	// the policy is chosen for, and the whole risk it takes.
+	absorbsWrit bool
 }
 
 func newStation(n model.Node, downstream []string) (*station, error) {
@@ -147,15 +152,24 @@ func newCache(n model.Node, downstream []string) (*station, error) {
 		return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
 	}
 	lookup := n.Cache.HitLatency.Duration()
+	// What a write costs here, and whether it goes on. Write-around does not
+	// consult the cache at all, so it costs nothing on the way past;
+	// write-through and write-back both touch it and pay the lookup.
+	policy := n.Cache.WritePolicy.OrDefault()
+	write := lookup
+	if policy == model.WriteAround {
+		write = 0
+	}
 	return &station{
-		id:        n.ID,
-		next:      downstream,
-		hold:      lookup,
-		holdWrite: lookup,
-		slots:     make([]int, 1),
-		busy:      make([]time.Duration, 1),
-		answers:   true,
-		hitRatio:  n.Cache.HitRatio,
+		id:          n.ID,
+		next:        downstream,
+		hold:        lookup,
+		holdWrite:   write,
+		slots:       make([]int, 1),
+		busy:        make([]time.Duration, 1),
+		answers:     true,
+		hitRatio:    n.Cache.HitRatio,
+		absorbsWrit: policy == model.WriteBack,
 	}, nil
 }
 

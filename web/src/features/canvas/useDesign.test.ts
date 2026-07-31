@@ -69,7 +69,7 @@ describe("useDesign", () => {
       result.current.replace({
         id: "cache",
         kind: "cache",
-        cache: { hitRatio: 0.1, hitLatencyMs: 1 },
+        cache: { hitRatio: 0.1, hitLatencyMs: 1, writePolicy: "writeThrough" },
       });
     });
     const cache = result.current.design.topology.nodes.find((node) => node.id === "cache");

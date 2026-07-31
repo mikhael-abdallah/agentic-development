@@ -309,18 +309,31 @@ func (e *engine) answered(st *station, req *request) bool {
 	if !st.answers {
 		return false
 	}
-	// A write is never a hit. It has to reach the store behind this, and a
-	// cache that absorbed one would be reporting an acknowledged write that
-	// nothing recorded — which is what the read flag has been carried from
-	// arrival for.
-	//
-	// The draw happens either way, before that is known. It costs one number
-	// and it means two runs that differ only in hit ratio, or only in read
-	// mix, still line up draw for draw: the same requests meet the same luck,
-	// and raising the ratio converts misses to hits rather than rerolling
-	// everything. That is the difference between a comparison and a reroll.
+	// The draw happens for every request that reaches the cache, read or
+	// write, and before anything is decided by it. It costs one number, and it
+	// means two runs that differ only in hit ratio, only in read mix, or only
+	// in write policy still line up draw for draw: the same requests meet the
+	// same luck, and raising the ratio converts misses to hits rather than
+	// rerolling everything. That is the difference between a comparison and a
+	// reroll, and it is why this is not folded into the branches below.
 	hit := e.rng.stream(st.id).Float64() < st.hitRatio
-	return hit && req.read
+	if req.read {
+		return hit
+	}
+	// A write is never a hit — nothing was found — so what happens to it is
+	// the cache's write policy and not its luck.
+	//
+	// Under write-through and write-around the write has to reach the store,
+	// and a cache that absorbed one would be reporting an acknowledged write
+	// that nothing recorded. Write-back is exactly the design that does
+	// acknowledge it: the cache takes the write and the store catches up
+	// outside the request, so nothing behind the cache sees it inside the
+	// measured window.
+	//
+	// That is also the one policy whose cost this simulator does not measure.
+	// A cache holding writes the store has not taken is a window in which a
+	// crash loses acknowledged data, and there is no crash here to lose it to.
+	return st.absorbsWrit
 }
 
 func (e *engine) complete(req *request) {
