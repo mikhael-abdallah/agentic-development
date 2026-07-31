@@ -24,6 +24,6 @@ Rules for AI coding agents working in this repository. `main` is locked; every c
 
 ## What the checks are for
 
-There are 18 required checks. They answer four questions — does it work, is it readable, does it still fit the design, can it be trusted — and the fifth guard, `parity-check`, exists to make sure the other seventeen are really running. [README.md](README.md) groups them; [ROADMAP.md](ROADMAP.md) records why each threshold is where it is.
+There are 20 required checks. They answer four questions — does it work, is it readable, does it still fit the design, can it be trusted — and a fifth group guards the rest: `parity-check` exists to make sure the other nineteen are really running, and `ratchet-check` to make sure they still demand something. The count is pinned as `guards.ci-jobs` in the ratchet baseline, so it cannot drift away from this sentence unnoticed. [README.md](README.md) groups them; [ROADMAP.md](ROADMAP.md) records why each threshold is where it is.
 
 If a gate seems wrong, say so in the PR body and leave it alone. The thresholds were tuned before enforcement began, and *ratchet, don't relax* is the rule that makes the rest of this trustworthy. `ratchet-check` enforces it: every limit, enabled linter and suppression count is pinned in `scripts/guards/ratchet.baseline`, and moving one — in either direction — fails until the baseline moves with it. Do not edit that file to make a check pass. Edit it only when the limit itself is the subject of the PR, and say why in the description.
