@@ -16,14 +16,35 @@ func chain(instances int, meanMs model.Millis, queue int) model.Topology {
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			entry(),
 			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{
 				Instances:     instances,
 				MeanService:   meanMs,
 				QueueCapacity: queue,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "api"}},
+		Edges: []model.Edge{{From: "client", To: "in"}, {From: "in", To: "api"}},
 	}
+}
+
+// entry is a load balancer that decides nothing: one component behind it, no
+// overhead, no pool.
+//
+// It is here because a client may not call a service that runs more than one
+// instance — something has to be spreading requests across them, and a client
+// is outside the system, so nothing there can be. A balancer with one target is
+// the smallest honest way to say "something chooses".
+//
+// It costs the measurements below nothing, and that is by construction rather
+// than by luck: a zero overhead is added rather than drawn, so it consumes no
+// randomness and cannot shift a single downstream draw; it has no pool, so it
+// never makes a request wait; and route() returns immediately when there is one
+// target, without a draw of its own.
+func entry() model.Node {
+	return model.Node{ID: "in", Kind: model.KindLoadBalancer, LoadBalancer: &model.LoadBalancerParams{
+		Algorithm: model.RoundRobin,
+		Overhead:  0,
+	}}
 }
 
 // frontend is the service every design needs between its client and its

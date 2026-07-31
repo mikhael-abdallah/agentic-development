@@ -5,7 +5,7 @@ import {
   type Scenario,
   type Topology,
   newNode,
-  whyNotCall,
+  whyNotSend,
 } from "@/lib/topology";
 
 export interface Position {
@@ -196,12 +196,12 @@ export function whyNotConnect(design: Design, from: string, to: string): string 
   if (source === undefined || target === undefined) {
     return "That component is not in this design.";
   }
-  // Which kinds may talk to which, before the questions about this particular
-  // pair of components: "a load balancer does not call a database" is a truer
+  // What one component may send to another, before the questions about this
+  // particular pair: "a load balancer does not call a database" is a truer
   // thing to be told than "that connection is already there".
-  const kinds = whyNotCall(source.kind, target.kind);
-  if (kinds !== null) {
-    return kinds;
+  const cannot = whyNotSend(source, target);
+  if (cannot !== null) {
+    return cannot;
   }
   if (design.topology.edges.some((edge) => edge.from === from && edge.to === to)) {
     return "That connection is already there.";
@@ -273,6 +273,18 @@ export function whyNotRun(topology: Topology): string | null {
   }
   if (!topology.edges.some((edge) => edge.from === client.id)) {
     return "The client is not connected to anything, so the requests it offers have nowhere to go.";
+  }
+  // The same rule the canvas refuses an edge on, asked again here — because
+  // the other way into a broken design is not drawing the edge but raising the
+  // instance count on a service the client already calls.
+  const byId = new Map(topology.nodes.map((node) => [node.id, node]));
+  for (const edge of topology.edges) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    const cannot = from === undefined || to === undefined ? null : whyNotSend(from, to);
+    if (cannot !== null) {
+      return cannot;
+    }
   }
   const reached = reachableFrom(topology, client.id);
   const stranded = topology.nodes.find((node) => !reached.has(node.id));

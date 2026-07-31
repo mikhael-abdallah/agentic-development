@@ -15,6 +15,7 @@ func tiers(instances int, serviceMean model.Millis, pool int, dbMean model.Milli
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			entry(),
 			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{
 				Instances: instances, MeanService: serviceMean,
 			}},
@@ -22,7 +23,9 @@ func tiers(instances int, serviceMean model.Millis, pool int, dbMean model.Milli
 				MeanRead: dbMean, MeanWrite: dbMean, PoolSize: pool,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "api"}, {From: "api", To: "db"}},
+		Edges: []model.Edge{
+			{From: "client", To: "in"}, {From: "in", To: "api"}, {From: "api", To: "db"},
+		},
 	}
 }
 
@@ -148,8 +151,11 @@ func TestPerNodeCountsAgreeWithTheTotals(t *testing.T) {
 	if dropped != res.Dropped {
 		t.Errorf("components dropped %d between them, the run reports %d", dropped, res.Dropped)
 	}
-	if len(res.Nodes) != 2 {
-		t.Errorf("reported on %d components, want the two that are not the client", len(res.Nodes))
+	// Every component but the client: the balancer, the service and the store.
+	// The client is where load comes from rather than something load passes
+	// through, so it has nothing to report.
+	if len(res.Nodes) != 3 {
+		t.Errorf("reported on %d components, want the three that are not the client", len(res.Nodes))
 	}
 }
 

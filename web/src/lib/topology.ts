@@ -155,6 +155,40 @@ export function whyNotCall(from: NodeKind, to: NodeKind): string | null {
   return "A database answers queries; it does not call anything. Whatever needs the data asks for it.";
 }
 
+/**
+ * Why one component cannot call another, given what each is set to be.
+ *
+ * `whyNotCall` above asks the same question of the kinds alone. This asks it of
+ * the components, because one rule needs to see a parameter: a client may not
+ * call a service that runs more than one instance.
+ *
+ * That rule is the twin of the one refusing fan-out. Fan-out is refused because
+ * a component with two things behind it has no defined answer for where a
+ * request goes. A pool is the same question inside one component — the
+ * simulation runs `instances` requests at once through a single queue, which is
+ * only what a real pool does if something is spreading requests evenly across
+ * the instances. A load balancer is that something.
+ *
+ * Only from a client, and not because the arithmetic differs. A service calling
+ * a pool may well be doing the spreading itself — a mesh sidecar, a resolver
+ * handing out addresses — and nothing here can tell whether it does. Load
+ * arriving from outside has no such story available: the client is the one
+ * component in a design that nobody owns, so there is nothing there to do it.
+ *
+ * Mirrors `clientToPool` in engine/internal/model/validate.go.
+ */
+export function whyNotSend(from: DesignNode, to: DesignNode): string | null {
+  const kinds = whyNotCall(from.kind, to.kind);
+  if (kinds !== null) {
+    return kinds;
+  }
+  const instances = to.service?.instances ?? 1;
+  if (from.kind === "client" && instances > 1) {
+    return `That service runs ${String(instances)} instances, and nothing here would choose between them. Put a load balancer in front: deciding which instance a request goes to is the whole of its job.`;
+  }
+  return null;
+}
+
 /** Which parameter key a kind carries. A client carries none: the load it
  *  offers is the workload, not a property of the component. */
 export type ParamsKey = "loadBalancer" | "service" | "cache" | "database";
@@ -229,7 +263,16 @@ export const SCENARIO_FIELDS = {
  */
 export const DEFAULT_PARAMS = {
   loadBalancer: { algorithm: "leastConnections", overheadMs: 0.5 },
-  service: { instances: 4, meanServiceMs: 8, queueCapacity: 500 },
+  // One instance, and fast enough that the default load sits at about
+  // three-fifths of what it can serve — the same comfortable starting point
+  // four instances at 8 ms used to give.
+  //
+  // One rather than four because a client may not call a pool directly, and a
+  // service that arrived as a pool would mean the first connection anyone drew
+  // on a fresh design was refused. Starting at one server and being told to put
+  // a balancer in front at the moment a second is added is the lesson in the
+  // right order; being told it before there is anything to balance is a wall.
+  service: { instances: 1, meanServiceMs: 2, queueCapacity: 500 },
   cache: { hitRatio: 0.85, hitLatencyMs: 0.5, writePolicy: "writeThrough" },
   database: { replicas: 1, meanReadMs: 12, meanWriteMs: 30, poolSize: 2 },
 } satisfies Record<ParamsKey, unknown> & {

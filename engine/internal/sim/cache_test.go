@@ -32,6 +32,7 @@ func cachedWith(
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			entry(),
 			frontend(),
 			{ID: "cache", Kind: model.KindCache, Cache: &model.CacheParams{
 				HitRatio:    ratio,
@@ -46,7 +47,8 @@ func cachedWith(
 			}},
 		},
 		Edges: []model.Edge{
-			{From: "client", To: "front"},
+			{From: "client", To: "in"},
+			{From: "in", To: "front"},
 			{From: "front", To: "cache"},
 			{From: "cache", To: "store"},
 		},
@@ -180,12 +182,15 @@ func TestACacheInFrontOfNothingIsRefused(t *testing.T) {
 	design := model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
+			entry(),
 			frontend(),
 			{ID: "cache", Kind: model.KindCache, Cache: &model.CacheParams{
 				HitRatio: 0.9, HitLatency: 1,
 			}},
 		},
-		Edges: []model.Edge{{From: "client", To: "front"}, {From: "front", To: "cache"}},
+		Edges: []model.Edge{
+			{From: "client", To: "in"}, {From: "in", To: "front"}, {From: "front", To: "cache"},
+		},
 	}
 	if _, err := sim.Run(design, load(100, 1)); !errors.Is(err, sim.ErrNoTargets) {
 		t.Errorf("Run() on a cache with nothing behind it = %v, want ErrNoTargets", err)

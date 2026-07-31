@@ -19,7 +19,7 @@ const design = `{
     "nodes": [
       {"id": "client", "kind": "client"},
       {"id": "api", "kind": "service",
-       "service": {"instances": 2, "meanServiceMs": 5, "queueCapacity": 0}}
+       "service": {"instances": 1, "meanServiceMs": 5, "queueCapacity": 0}}
     ],
     "edges": [{"from": "client", "to": "api"}]
   },
