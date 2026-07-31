@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   type Design,
   addNode,
+  componentSignature,
   connect,
   designOf,
   disconnect,
   emptyDesign,
+  freeSpot,
   layoutOf,
   moveNode,
   removeNode,
@@ -265,5 +267,74 @@ describe("designOf", () => {
     const design = designOf(scenario);
     expect(design.positions.size).toBe(design.topology.nodes.length);
     expect(design.selected).toBeNull();
+  });
+});
+
+// Clicking a palette entry has no position in mind. Every click used to drop
+// its component on one fixed point, so the second landed exactly on top of the
+// first: three components, one visible box, and nothing on screen saying the
+// others were there.
+describe("freeSpot", () => {
+  it("puts the first extra component beside the client, not on it", () => {
+    const design = emptyDesign();
+    const client = design.positions.get("client");
+    const spot = freeSpot(design);
+    expect(spot).not.toEqual(client);
+  });
+
+  it("never lands on a component that is already there", () => {
+    let design = emptyDesign();
+    const spots: string[] = [];
+    for (const kind of ["service", "cache", "database", "loadBalancer"] as const) {
+      const spot = freeSpot(design);
+      spots.push([spot.x, spot.y].join(","));
+      design = addNode(design, kind, spot);
+    }
+    expect(new Set(spots).size).toBe(spots.length);
+    const placed = [...design.positions.values()].map((at) => [at.x, at.y].join(","));
+    expect(new Set(placed).size).toBe(placed.length);
+  });
+
+  // A component dragged a little off its cell still occupies it: the question
+  // is whether something would land on top, and near enough is on top.
+  it("treats a component nudged off its cell as still standing there", () => {
+    const design = moveNode(emptyDesign(), "client", { x: 68, y: 54 });
+    expect(freeSpot(design)).not.toEqual({ x: 60, y: 60 });
+  });
+
+  it("fills a hole left by a component that was removed", () => {
+    const beside = freeSpot(emptyDesign());
+    const design = removeNode(addNode(emptyDesign(), "cache", beside), "cache");
+    expect(freeSpot(design)).toEqual(beside);
+  });
+});
+
+// The canvas re-fits the view on this and not on the design, because the
+// design changes on every pixel of a drag and re-fitting mid-drag would fight
+// the hand doing the dragging.
+describe("componentSignature", () => {
+  it("changes when a component arrives", () => {
+    const before = emptyDesign();
+    const after = addNode(before, "cache", SOMEWHERE);
+    expect(componentSignature(after.topology)).not.toBe(componentSignature(before.topology));
+  });
+
+  it("changes when a component leaves", () => {
+    const design = addNode(emptyDesign(), "cache", SOMEWHERE);
+    expect(componentSignature(removeNode(design, "cache").topology)).not.toBe(
+      componentSignature(design.topology),
+    );
+  });
+
+  it("does not change when a component is only moved", () => {
+    const design = addNode(emptyDesign(), "cache", SOMEWHERE);
+    const moved = moveNode(design, "cache", { x: 900, y: 900 });
+    expect(componentSignature(moved.topology)).toBe(componentSignature(design.topology));
+  });
+
+  it("does not change when a component is only connected", () => {
+    const design = addNode(emptyDesign(), "cache", SOMEWHERE);
+    const linked = connect(design, "client", "cache");
+    expect(componentSignature(linked.topology)).toBe(componentSignature(design.topology));
   });
 });

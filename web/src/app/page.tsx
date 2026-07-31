@@ -7,10 +7,6 @@ import { Palette } from "@/features/palette/Palette";
 import { Library } from "@/features/simulation/Library";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 
-/** Where a component clicked rather than dragged lands. Roughly the middle of
- *  the opening view, so it arrives on screen without landing on the client. */
-const CLICK_DROP = { x: 340, y: 220 };
-
 export default function Home() {
   const controller = useDesign();
 
@@ -23,7 +19,7 @@ export default function Home() {
       <div className="workspace__body">
         <Palette
           onAdd={(kind) => {
-            controller.add(kind, CLICK_DROP);
+            controller.add(kind);
           }}
         />
         <DesignCanvas controller={controller} />

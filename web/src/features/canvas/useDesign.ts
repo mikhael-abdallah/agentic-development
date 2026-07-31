@@ -9,6 +9,7 @@ import {
   connect,
   disconnect,
   emptyDesign,
+  freeSpot,
   moveNode,
   removeNode,
   replaceNode,
@@ -30,7 +31,10 @@ import type { DesignNode, NodeKind } from "@/lib/topology";
  */
 export interface DesignController {
   design: Design;
-  add: (kind: NodeKind, at: Position) => void;
+  /** Adds a component. Without a position it goes wherever there is room —
+   *  a click on the palette has no place in mind, and dropping every one of
+   *  them on the same point stacks them into a single visible box. */
+  add: (kind: NodeKind, at?: Position) => void;
   move: (id: string, at: Position) => void;
   link: (from: string, to: string) => void;
   unlink: (from: string, to: string) => void;
@@ -43,8 +47,8 @@ export interface DesignController {
 export function useDesign(initial?: Design): DesignController {
   const [design, setDesign] = useState<Design>(() => initial ?? emptyDesign());
 
-  const add = useCallback((kind: NodeKind, at: Position) => {
-    setDesign((current) => addNode(current, kind, at));
+  const add = useCallback((kind: NodeKind, at?: Position) => {
+    setDesign((current) => addNode(current, kind, at ?? freeSpot(current)));
   }, []);
   const move = useCallback((id: string, at: Position) => {
     setDesign((current) => moveNode(current, id, at));

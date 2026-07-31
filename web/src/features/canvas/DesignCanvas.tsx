@@ -10,7 +10,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { type DragEvent, useCallback, useMemo, useState } from "react";
+import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ComponentNode } from "@/features/canvas/ComponentNode";
 import {
@@ -22,7 +22,7 @@ import {
   toFlowNodes,
 } from "@/features/canvas/graph";
 import type { DesignController } from "@/features/canvas/useDesign";
-import { whyNotConnect } from "@/lib/design";
+import { componentSignature, whyNotConnect } from "@/lib/design";
 import { KIND_MIME } from "@/lib/drag";
 import { NODE_KINDS, type NodeKind } from "@/lib/topology";
 
@@ -31,6 +31,24 @@ import "@xyflow/react/dist/style.css";
 // Outside the component, because React Flow remounts every node when this
 // object changes identity — which, defined inline, is every render.
 const NODE_TYPES = { component: ComponentNode };
+
+/**
+ * How the view is brought back to the design.
+ *
+ * `maxZoom: 1` is the load-bearing part. Without it a design with one
+ * component in it is fitted by magnifying that component to fill the pane —
+ * React Flow zooms to its own maximum of 2 — and every component added
+ * afterwards arrives into a view showing about a fifth of the design area. A
+ * five-component preset loaded into that view had three of its components
+ * outside the window with nothing to say they existed.
+ */
+const FIT = { padding: 0.18, maxZoom: 1, duration: 200 };
+
+// Below React Flow's default floor of 0.5, because a design can outgrow the
+// window and being unable to zoom out far enough to see it is the same defect
+// as not fitting it in the first place.
+const MIN_ZOOM = 0.15;
+const MAX_ZOOM = 2;
 
 function isKind(value: string): value is NodeKind {
   return NODE_KINDS.includes(value as NodeKind);
@@ -42,13 +60,22 @@ interface SurfaceProps {
 
 function Surface({ controller }: SurfaceProps) {
   const { design, add, move, link, unlink, drop, select } = controller;
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   // Why the last connection was refused. Shown rather than swallowed: an edge
   // that silently fails to appear reads as a broken canvas.
   const [refusal, setRefusal] = useState<string | null>(null);
 
   const nodes = useMemo(() => toFlowNodes(design), [design]);
   const edges = useMemo(() => toFlowEdges(design.topology), [design.topology]);
+
+  // Bring the view back whenever the set of components changes — one arriving
+  // or leaving is exactly when something can land outside the window. Keyed on
+  // the signature rather than on the design, because the design changes on
+  // every pixel of a drag and re-fitting mid-drag fights the hand doing it.
+  const components = componentSignature(design.topology);
+  useEffect(() => {
+    void fitView(FIT);
+  }, [components, fitView]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<ComponentNodeType>[]) => {
@@ -116,6 +143,9 @@ function Surface({ controller }: SurfaceProps) {
           setRefusal(null);
         }}
         fitView
+        fitViewOptions={FIT}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
         proOptions={{ hideAttribution: false }}
       >
         <Background />

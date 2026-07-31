@@ -99,3 +99,31 @@ describe("useDesign", () => {
     expect(edgeList(result.current.design)).toEqual([]);
   });
 });
+
+// The palette's click path had no position to give, so every component it
+// added landed on the same fixed point and stacked into one visible box.
+describe("useDesign adding without a position", () => {
+  it("finds room rather than stacking components on one spot", () => {
+    const { result } = renderHook(() => useDesign());
+    act(() => {
+      result.current.add("service");
+    });
+    act(() => {
+      result.current.add("cache");
+    });
+    act(() => {
+      result.current.add("database");
+    });
+    const placed = [...result.current.design.positions.values()].map((at) => [at.x, at.y].join(","));
+    expect(placed).toHaveLength(4);
+    expect(new Set(placed).size).toBe(4);
+  });
+
+  it("still puts a component exactly where it was dropped", () => {
+    const { result } = renderHook(() => useDesign());
+    act(() => {
+      result.current.add("cache", SOMEWHERE);
+    });
+    expect(result.current.design.positions.get("cache")).toEqual(SOMEWHERE);
+  });
+});

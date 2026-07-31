@@ -36,6 +36,56 @@ const LAYER_X = 240;
 const ROW_Y = 110;
 const ORIGIN: Position = { x: 60, y: 60 };
 
+/** Which cell of the layout grid a position is standing on. Rounded rather
+ *  than floored, so a component dragged a little off a cell still counts as
+ *  occupying it — the question this answers is "would something land on top of
+ *  this", and near enough is on top. */
+function cellOf(at: Position): string {
+  const column = Math.round((at.x - ORIGIN.x) / LAYER_X);
+  const row = Math.round((at.y - ORIGIN.y) / ROW_Y);
+  return [column, row].join(",");
+}
+
+/**
+ * Where a component added without a place of its own goes.
+ *
+ * Clicking a palette entry used to drop every component on one fixed point, so
+ * the second landed exactly on top of the first and the third on top of both:
+ * three components, one visible box, and nothing on screen saying the others
+ * were there. This walks the same grid `layoutOf` uses and returns the first
+ * cell nothing is standing on, scanning each row left to right so a design
+ * grows the way its traffic flows.
+ *
+ * The scan is bounded and cannot fall through: it covers (n+1)² cells for n
+ * components, so a free one always exists inside it.
+ */
+export function freeSpot(design: Design): Position {
+  const taken = new Set([...design.positions.values()].map(cellOf));
+  const span = design.positions.size;
+  for (let row = 0; row <= span; row++) {
+    for (let column = 0; column <= span; column++) {
+      const at = { x: ORIGIN.x + column * LAYER_X, y: ORIGIN.y + row * ROW_Y };
+      if (!taken.has(cellOf(at))) {
+        return at;
+      }
+    }
+  }
+  return ORIGIN;
+}
+
+/**
+ * Which components a design has, as one string.
+ *
+ * The canvas brings the view back to the design when this changes, rather than
+ * when the design does. A design changes on every pixel of a drag, and
+ * re-fitting the view mid-drag would fight the hand doing the dragging. What
+ * has to bring it back is a component arriving or leaving — which is exactly
+ * when something can end up outside the window, and the whole design with it.
+ */
+export function componentSignature(topology: Topology): string {
+  return topology.nodes.map((node) => node.id).join("|");
+}
+
 /** A design needs exactly one client to be simulable, so a new one starts
  *  with it already placed rather than with an error nobody asked for. */
 export function emptyDesign(): Design {
