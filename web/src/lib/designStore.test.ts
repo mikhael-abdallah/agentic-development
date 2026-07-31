@@ -6,8 +6,14 @@ import type { Topology } from "@/lib/topology";
 
 const KEY = "simulator.designs";
 
+/** client -> service -> database. Routed through a service because a client
+ *  does not call a database: `connect` refuses that edge, and a fixture built
+ *  on a refused edge is a fixture with no edge in it. */
 function chain(): Topology {
-  return connect(addNode(emptyDesign(), "database", { x: 0, y: 0 }), "client", "database").topology;
+  let design = addNode(emptyDesign(), "service", { x: 0, y: 0 });
+  design = addNode(design, "database", { x: 0, y: 0 });
+  design = connect(design, "client", "service");
+  return connect(design, "service", "database").topology;
 }
 
 afterEach(() => {

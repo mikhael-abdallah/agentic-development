@@ -78,11 +78,11 @@ describe("useDesign", () => {
 
   it("loads a design over the one being edited", () => {
     const { result } = renderHook(() => useDesign());
-    const loaded = connect(addNode(emptyDesign(), "database", SOMEWHERE), "client", "database");
+    const loaded = connect(addNode(emptyDesign(), "service", SOMEWHERE), "client", "service");
     act(() => {
       result.current.load(loaded);
     });
-    expect(edgeList(result.current.design)).toEqual(["client->database"]);
+    expect(edgeList(result.current.design)).toEqual(["client->service"]);
   });
 
   // Every rule about what a design may be lives in lib/design, and the hook is

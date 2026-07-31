@@ -12,16 +12,20 @@ import { type Design, addNode, connect, emptyDesign, selectNode } from "@/lib/de
 
 const SOMEWHERE = { x: 10, y: 20 };
 
+/** client -> service -> database. The service is not decoration: a client does
+ *  not call a database, and `connect` refuses the edge that says it does. */
 function chain(): Design {
-  const design = addNode(emptyDesign(), "database", SOMEWHERE);
-  return connect(design, "client", "database");
+  let design = addNode(emptyDesign(), "service", SOMEWHERE);
+  design = addNode(design, "database", SOMEWHERE);
+  design = connect(design, "client", "service");
+  return connect(design, "service", "database");
 }
 
 describe("toFlowNodes", () => {
   it("places every component where the design put it", () => {
     const nodes = toFlowNodes(chain());
-    expect(nodes.map((node) => node.id)).toEqual(["client", "database"]);
-    expect(nodes[1]?.position).toEqual(SOMEWHERE);
+    expect(nodes.map((node) => node.id)).toEqual(["client", "service", "database"]);
+    expect(nodes[2]?.position).toEqual(SOMEWHERE);
   });
 
   // A component with no position would otherwise be laid out by React Flow at
@@ -30,12 +34,12 @@ describe("toFlowNodes", () => {
   it("gives a component with no position one anyway", () => {
     const design = chain();
     design.positions.delete("database");
-    expect(toFlowNodes(design)[1]?.position).toEqual({ x: 0, y: 0 });
+    expect(toFlowNodes(design)[2]?.position).toEqual({ x: 0, y: 0 });
   });
 
   it("carries the selection so the canvas does not keep its own", () => {
     const nodes = toFlowNodes(selectNode(chain(), "database"));
-    expect(nodes.map((node) => node.selected)).toEqual([false, true]);
+    expect(nodes.map((node) => node.selected)).toEqual([false, false, true]);
   });
 
   it("shows a component's own label when it has one", () => {
@@ -43,11 +47,11 @@ describe("toFlowNodes", () => {
   });
 
   it("falls back to the name of the kind when it has none", () => {
-    expect(toFlowNodes(chain())[1]?.data.name).toBe("Database");
+    expect(toFlowNodes(chain())[2]?.data.name).toBe("Database");
   });
 
   it("summarises the parameters that decide how it behaves", () => {
-    expect(toFlowNodes(chain())[1]?.data.summary).toContain("replicas");
+    expect(toFlowNodes(chain())[2]?.data.summary).toContain("replicas");
   });
 });
 
@@ -55,13 +59,14 @@ describe("toFlowEdges", () => {
   it("carries both endpoints, so nothing has to parse an id to find them", () => {
     const edges = toFlowEdges(chain().topology);
     expect(edges).toEqual([
-      { id: edgeId("client", "database"), source: "client", target: "database" },
+      { id: edgeId("client", "service"), source: "client", target: "service" },
+      { id: edgeId("service", "database"), source: "service", target: "database" },
     ]);
   });
 
   it("gives two edges between different components different ids", () => {
     let design = addNode(chain(), "cache", SOMEWHERE);
-    design = connect(design, "client", "cache");
+    design = connect(design, "service", "cache");
     const ids = toFlowEdges(design.topology).map((edge) => edge.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -104,8 +109,8 @@ describe("editsFromEdgeChanges", () => {
   it("finds both endpoints of a removed connection", () => {
     const topology = chain().topology;
     expect(
-      editsFromEdgeChanges([{ id: edgeId("client", "database"), type: "remove" }], topology),
-    ).toEqual([{ type: "unlink", from: "client", to: "database" }]);
+      editsFromEdgeChanges([{ id: edgeId("service", "database"), type: "remove" }], topology),
+    ).toEqual([{ type: "unlink", from: "service", to: "database" }]);
   });
 
   // Endpoints are looked up through the same function that built the id, not
@@ -132,7 +137,10 @@ describe("editsFromEdgeChanges", () => {
 
   it("ignores a change that is not a removal", () => {
     expect(
-      editsFromEdgeChanges([{ id: edgeId("client", "database"), type: "select", selected: true }], chain().topology),
+      editsFromEdgeChanges(
+        [{ id: edgeId("client", "service"), type: "select", selected: true }],
+        chain().topology,
+      ),
     ).toEqual([]);
   });
 });

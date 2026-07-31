@@ -86,6 +86,61 @@ export interface Scenario {
   workload: Workload;
 }
 
+/**
+ * Why a component of one kind cannot call another, or null if it can.
+ *
+ * The rule and its reason in one place, because they are the same fact: a
+ * refusal a user cannot act on is only half a rule. Every sentence names the
+ * fix rather than the mistake — someone drawing a client straight onto a
+ * database is not confused about what they drew, they are missing the thing
+ * that belongs between.
+ *
+ * Mirrors `NodeKind.Calls` in engine/internal/model/kind.go, and the two have
+ * to move together. The engine is the authority: it refuses the same designs
+ * with the same boundaries, and this exists so the refusal arrives while the
+ * pointer is still down instead of after a run.
+ *
+ * A switch rather than a lookup, so adding a kind to the contract fails to
+ * compile until someone has decided what it may talk to.
+ */
+function callsOf(kind: NodeKind): readonly NodeKind[] {
+  switch (kind) {
+    case "client":
+      return ["loadBalancer", "service"];
+    case "loadBalancer":
+      return ["loadBalancer", "service"];
+    case "service":
+      return ["loadBalancer", "service", "cache", "database"];
+    case "cache":
+      return ["cache", "database"];
+    case "database":
+      return [];
+  }
+}
+
+export function whyNotCall(from: NodeKind, to: NodeKind): string | null {
+  if (callsOf(from).includes(to)) {
+    return null;
+  }
+  if (to === "client") {
+    return "The client is where load comes from. Nothing sends traffic back to it.";
+  }
+  if (from === "client") {
+    return "A client does not reach into your storage. Put a service in front — what owns the data is what talks to it.";
+  }
+  if (from === "loadBalancer") {
+    return "A load balancer spreads requests over servers, not over storage. Point it at a service, and let the service read.";
+  }
+  if (from === "cache") {
+    return "A cache answers what it holds and falls through to what is behind it. Behind it is a store, not a caller.";
+  }
+  // Only a database reaches this line. A service may call everything except
+  // the client, and the client was answered above — so there is no branch for
+  // one here, and writing an unreachable one would be writing a sentence
+  // nobody can ever be shown.
+  return "A database answers queries; it does not call anything. Whatever needs the data asks for it.";
+}
+
 /** Which parameter key a kind carries. A client carries none: the load it
  *  offers is the workload, not a property of the component. */
 export type ParamsKey = "loadBalancer" | "service" | "cache" | "database";

@@ -4,6 +4,7 @@ import {
   type Scenario,
   type Topology,
   newNode,
+  whyNotCall,
 } from "@/lib/topology";
 
 export interface Position {
@@ -200,8 +201,12 @@ export function whyNotConnect(design: Design, from: string, to: string): string 
   if (source === undefined || target === undefined) {
     return "That component is not in this design.";
   }
-  if (target.kind === "client") {
-    return "The client sends traffic; nothing sends traffic to it.";
+  // Which kinds may talk to which, before the questions about this particular
+  // pair of components: "a load balancer does not call a database" is a truer
+  // thing to be told than "that connection is already there".
+  const kinds = whyNotCall(source.kind, target.kind);
+  if (kinds !== null) {
+    return kinds;
   }
   if (design.topology.edges.some((edge) => edge.from === from && edge.to === to)) {
     return "That connection is already there.";

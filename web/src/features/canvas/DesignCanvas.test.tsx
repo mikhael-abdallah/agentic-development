@@ -8,9 +8,14 @@ import { KIND_MIME } from "@/lib/drag";
 
 const SOMEWHERE = { x: 40, y: 40 };
 
+/** client -> service -> database. Routed through a service because a client
+ *  does not call a database: `connect` refuses that edge, and a fixture built
+ *  on a refused edge is a fixture with no edge in it. */
 function chain(): Design {
-  const design = addNode(emptyDesign(), "database", SOMEWHERE);
-  return connect(design, "client", "database");
+  let design = addNode(emptyDesign(), "service", SOMEWHERE);
+  design = addNode(design, "database", SOMEWHERE);
+  design = connect(design, "client", "service");
+  return connect(design, "service", "database");
 }
 
 /** The canvas under a real controller, because the pair is what is worth
@@ -52,10 +57,17 @@ describe("DesignCanvas", () => {
 
   // The rule that nothing sends traffic to the client, expressed as an anchor
   // that is not there to grab rather than as an error after the fact.
+  // Asked of the client itself rather than of a count of handles: a count
+  // moves whenever the fixture gains a component, and would go on passing for
+  // the wrong reason.
   it("gives the client nowhere to receive traffic", () => {
-    render(<Harness initial={chain()} />);
-    expect(screen.getAllByLabelText("outgoing traffic")).toHaveLength(2);
-    expect(screen.getAllByLabelText("incoming traffic")).toHaveLength(1);
+    const { container } = render(<Harness initial={chain()} />);
+    const client = container.querySelector('.react-flow__node[data-id="client"]');
+    expect(client?.querySelector('[aria-label="outgoing traffic"]')).not.toBeNull();
+    expect(client?.querySelector('[aria-label="incoming traffic"]')).toBeNull();
+    // And every other component does have one, or the rule would be "no
+    // component receives traffic", which is a different and broken canvas.
+    expect(screen.getAllByLabelText("incoming traffic")).toHaveLength(2);
   });
 
   it("adds a component dropped from the palette", () => {

@@ -26,6 +26,22 @@ func chain(instances int, meanMs model.Millis, queue int) model.Topology {
 	}
 }
 
+// frontend is the service every design needs between its client and its
+// storage, sized so that it is not the subject of any measurement it appears
+// in: enough instances that nothing ever queues at it, and a service time
+// three orders of magnitude below the components under test.
+//
+// A client wired straight to a database or a cache is not a system anyone
+// deploys, and the model refuses it. These tests used to draw one because the
+// hop was noise they did not want; the hop is now the price of the design
+// being a design, and making it cheap is the honest way to pay it.
+func frontend() model.Node {
+	return model.Node{ID: "front", Kind: model.KindService, Service: &model.ServiceParams{
+		Instances:   512,
+		MeanService: 0.001,
+	}}
+}
+
 // same reports whether two runs produced the same Result.
 //
 // Result carries a map of per-component statistics, so == no longer compiles

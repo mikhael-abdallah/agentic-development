@@ -7,6 +7,8 @@
 // HTTP API and the web client both read.
 package model
 
+import "slices"
+
 // NodeKind is the type of a component in a design.
 type NodeKind string
 
@@ -32,6 +34,46 @@ func Kinds() []NodeKind {
 		KindCache,
 		KindDatabase,
 	}
+}
+
+// Calls returns the kinds a component of this kind may send requests to.
+//
+// Not every pair of components is a system. A client that opens its own
+// connection to a database is not something anyone deploys — what owns the
+// data is what talks to it — and a database that calls out is not a database.
+// Without this, a design could be drawn that the simulator would happily put
+// numbers to, and numbers about a system that cannot exist are worse than a
+// refusal: they look like an answer.
+//
+// The permissive entries are as deliberate as the strict ones. A service may
+// call another service, and a load balancer may sit in front of another,
+// because tiers behind tiers are ordinary. A cache may fall through to another
+// cache for the same reason a near cache sits in front of a remote one.
+//
+// Mirrored by callsOf/whyNotCall in web/src/lib/topology.ts. The two tables
+// have to move together; a rule the canvas does not know refuses an edge only
+// after the design has been drawn and run.
+func (k NodeKind) Calls() []NodeKind {
+	switch k {
+	case KindClient:
+		return []NodeKind{KindLoadBalancer, KindService}
+	case KindLoadBalancer:
+		return []NodeKind{KindLoadBalancer, KindService}
+	case KindService:
+		return []NodeKind{KindLoadBalancer, KindService, KindCache, KindDatabase}
+	case KindCache:
+		return []NodeKind{KindCache, KindDatabase}
+	case KindDatabase:
+		return nil
+	default:
+		return nil
+	}
+}
+
+// MayCall reports whether a component of kind k may send requests to one of
+// kind other.
+func (k NodeKind) MayCall(other NodeKind) bool {
+	return slices.Contains(k.Calls(), other)
 }
 
 // Valid reports whether k is a kind this package knows.
