@@ -4,6 +4,7 @@ import { DesignCanvas } from "@/features/canvas/DesignCanvas";
 import { useDesign } from "@/features/canvas/useDesign";
 import { Inspector } from "@/features/inspector/Inspector";
 import { Palette } from "@/features/palette/Palette";
+import { Library } from "@/features/simulation/Library";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 
 /** Where a component clicked rather than dragged lands. Roughly the middle of
@@ -34,6 +35,7 @@ export default function Home() {
             onChange={controller.replace}
           />
           <SimulationPanel topology={controller.design.topology} />
+          <Library topology={controller.design.topology} onLoad={controller.load} />
         </div>
       </div>
     </main>
