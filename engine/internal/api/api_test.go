@@ -142,11 +142,11 @@ func TestTheWrongMethodIsRefused(t *testing.T) {
 
 func TestAnUnknownPathIsNotFound(t *testing.T) {
 	t.Parallel()
-	req := httptest.NewRequest(http.MethodGet, "/scenarios", nil)
+	req := httptest.NewRequest(http.MethodGet, "/simulations", nil)
 	rec := httptest.NewRecorder()
 	api.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
-		t.Errorf("GET /scenarios = %d, want %d", rec.Code, http.StatusNotFound)
+		t.Errorf("GET /simulations = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 

@@ -8,7 +8,7 @@ The premise: code here is written by AI agents, not reviewed line-by-line by me.
 
 `main` is protected: changes land only through pull requests, no direct pushes,
 no force pushes, squash merges only. Auto-merge is on — a green PR merges
-itself, a red one goes back to the agent. **18 status checks** are required
+itself, a red one goes back to the agent. **20 status checks** are required
 before that can happen.
 
 They exist in four groups, each answering a different question.

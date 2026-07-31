@@ -33,6 +33,7 @@ engine/
     simwasm/        WASM build target exporting the engine to the browser
   internal/
     model/          topology types: components, edges, parameters, validation
+      scenarios/    preset designs, one JSON file each, compiled in with go:embed
     sim/            discrete-event simulation core; deterministic, seedable
     api/            HTTP/JSON transport for engined
 ```
@@ -41,6 +42,10 @@ Rules (enforced by `depguard` in `go-lint`, and by `structure-check` for
 placement):
 
 - `model` imports nothing from this repo. `sim` imports only `model`.
+- Presets live in `model` because both adapters serve the same ones, and
+  because a preset that does not validate is a broken design rather than a
+  broken transport. They are embedded, not read from disk: the core opens no
+  paths, so there is no working directory a binary can be started from wrongly.
 - `sim` and `model` are **pure**: no `net/http`, no I/O, no clocks other than
   the simulated one. Determinism (same seed → same result) is a test invariant.
 - Only `api` and `cmd/*` may import `sim`. Nothing imports `cmd`.
