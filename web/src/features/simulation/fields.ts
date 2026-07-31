@@ -61,7 +61,10 @@ export const WORKLOAD_FIELDS: NumberField<Workload>[] = [
   },
   {
     label: "Seed",
-    hint: "The same design, load and seed produce the same result. Change it to see whether an answer was the design or the draw.",
+    // The old wording assumed you already knew what a seed was, which is
+    // exactly the reader who does not need the hint. This one says what is
+    // random, what the number does to it, and what to do with that.
+    hint: "Requests do not arrive on a metronome and no two take the same time to serve; the simulator draws both at random. The seed picks which random numbers it draws, so the same design and load with the same seed give exactly the same answer — and changing only the seed shows how much of that answer was luck.",
     unit: "",
     min: 0,
     max: Number.MAX_SAFE_INTEGER,

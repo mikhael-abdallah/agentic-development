@@ -40,8 +40,13 @@ export function SimulationPanel({ topology }: SimulationPanelProps) {
   };
 
   return (
-    <section className="simulation" aria-label="Simulation">
-      <h2 className="simulation__title">Load</h2>
+    <section className="panel simulation" aria-label="Run settings">
+      {/* Named for its scope, not its contents. These numbers describe the
+          traffic offered to the design as a whole; the panel above describes
+          one component. Both draw the same rows, so nothing but the heading
+          tells them apart. */}
+      <p className="panel__scope">Whole design</p>
+      <h2 className="panel__title">The load to put through it</h2>
       <Numbers subject={workload} fields={WORKLOAD_FIELDS} onChange={setWorkload} />
       <button
         type="button"

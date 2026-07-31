@@ -7,7 +7,7 @@ import {
   LOAD_BALANCER_FIELDS,
   SERVICE_FIELDS,
 } from "@/features/inspector/fields";
-import { algorithmLabel, kindLabel } from "@/lib/describe";
+import { algorithmLabel, kindBlurb, kindLabel } from "@/lib/describe";
 import {
   ALGORITHMS,
   type Algorithm,
@@ -126,15 +126,27 @@ interface InspectorProps {
   readonly cannotRemove: string | null;
 }
 
-/** The selected component's parameters, and what each one does to the answer. */
+/**
+ * The selected component's parameters, and what each one does to the answer.
+ *
+ * The heading names the component rather than saying "Parameters", and the
+ * line above it says whose parameters they are. Three panels sit in this
+ * column drawing identical rows of numbers, and without that, a queue capacity
+ * and an arrival rate look like two settings of the same thing — one of which
+ * would silently belong to a component nobody remembers selecting.
+ */
 export function Inspector({ node, onChange, onRemove, cannotRemove }: InspectorProps) {
   return (
-    <aside className="inspector" aria-label="Parameters">
-      <h2 className="inspector__title">Parameters</h2>
+    <aside className="panel inspector" aria-label="Component settings" data-kind={node?.kind}>
+      <p className="panel__scope">Selected component</p>
+      <h2 className="panel__title">
+        {node === undefined ? "Nothing selected" : (node.label ?? kindLabel(node.kind))}
+      </h2>
       {node === undefined ? (
-        <p className="field__hint">Select a component to change what it does.</p>
+        <p className="field__hint">Select a component on the canvas to change what it does.</p>
       ) : (
         <>
+          <p className="panel__kind">{kindBlurb(node.kind)}</p>
           <Row label="Name" hint="What the canvas shows. It has no effect on the simulation.">
             {({ id, describedBy }) => (
               <input
