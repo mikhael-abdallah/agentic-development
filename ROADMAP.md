@@ -155,3 +155,38 @@ because a required check that never *reports* leaves auto-merge waiting forever.
 **Tests for the guards themselves.** Every guard added here has a suite with a
 negative case per rule, because they share one failure mode: a guard that
 silently matches nothing looks exactly like a guard that passes.
+
+## The product these gates exist for ✅
+
+The pipeline came first on purpose, but a guardrail with nothing behind it is
+a claim about code that does not exist. The **system design simulator** is now
+running end to end, built entirely through the loop above — thirteen pull
+requests, every one of them green before a human saw it.
+
+| Piece | What it is |
+|---|---|
+| `internal/model` | Topology, per-kind parameters, workload, validation. Imports nothing else here; presets embedded with `go:embed` and validated at process start |
+| `internal/sim` | Discrete-event core: an event heap with a sequence tie-breaker, one seeded PCG stream per node, warmup then measurement window |
+| `internal/api` | `POST /simulate`, `GET /scenarios`, `GET /healthz`, and the exported web app |
+| `web/` | Drag a component onto a canvas, wire it up, set its numbers, run it, read the percentiles and the bottleneck. Save what you drew, or open the shortener the engine ships |
+| `Dockerfile` | All of it as one process: `docker run -p 8080:8080` |
+
+**How it is known to be right**, in ascending order of strength:
+
+1. **Determinism.** The same topology and seed twice is byte-identical; two
+   seeds differ. Without this every other measurement is a coin flip that
+   passes most of the time.
+2. **A closed-form oracle.** The analytic M/M/1 `Queue` from before the
+   simulator existed was kept rather than deleted, and the discrete-event
+   engine's mean latency must converge to it across a sweep of utilizations. A
+   closed form cannot have inherited the implementation's bug.
+3. **Saturation.** As utilization approaches 1, p99 grows far faster than the
+   arrival rate; past capacity, requests drop and throughput plateaus rather
+   than tracking arrivals.
+4. **The scenario's own claim.** The URL shortener's `goal` says raising the
+   cache hit ratio unloads the database and that the bottleneck moves when it
+   stops helping. That is a test, not a sentence in a JSON file.
+
+**Next**: more scenarios — rate limiter, notification fan-out, crawler, feed,
+booking. Each is content rather than engineering; the primitives they need are
+the ones the shortener already forced.
