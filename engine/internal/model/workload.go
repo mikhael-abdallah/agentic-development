@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Workload is the load offered to a design over one simulation run.
 type Workload struct {
@@ -26,14 +29,40 @@ type Workload struct {
 	WarmupFraction float64 `json:"warmupFraction"`
 }
 
+// maxRateRPS is the fastest arrival stream a simulation clock can express:
+// one request per nanosecond.
+//
+// Past it the mean gap between arrivals rounds down to zero, and an arrival
+// process with no gap does not advance the clock at all — every arrival is
+// scheduled at the instant the last one was, the horizon is never reached, and
+// the run does not finish. Not a wrong answer: no answer, and a caller left
+// holding a goroutine that cannot be interrupted.
+//
+// It is the same clock-resolution mistake representable() catches at the other
+// end. A duration too long overflows into a run that ends before it starts; a
+// rate too high underflows into a run that never moves.
+const maxRateRPS = float64(time.Second / time.Nanosecond)
+
+// arrivalsAreSpaced rejects a rate the clock cannot put a gap into.
+func (w Workload) arrivalsAreSpaced() error {
+	if w.RateRPS > maxRateRPS {
+		return fmt.Errorf(
+			"%w: rateRps is %g, above the one arrival per nanosecond a simulation clock can space (%g)",
+			ErrParamRange, w.RateRPS, maxRateRPS)
+	}
+	return nil
+}
+
 // Validate reports whether this workload can be run. Failures wrap both
 // ErrWorkload and the specific range error, so a caller can ask either "was
 // the workload at fault" or "was a number out of range".
 func (w Workload) Validate() error {
 	for _, err := range []error{
 		aboveZero("rateRps", w.RateRPS),
+		w.arrivalsAreSpaced(),
 		fraction("readFraction", w.ReadFraction),
 		aboveZero("durationMs", float64(w.Duration)),
+		representable("durationMs", float64(w.Duration)),
 		fraction("warmupFraction", w.WarmupFraction),
 	} {
 		if err != nil {

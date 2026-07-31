@@ -112,3 +112,31 @@ func TestWorkloadJSONRoundTrip(t *testing.T) {
 		t.Errorf("round trip changed the workload:\n got %+v\nwant %+v", got, want)
 	}
 }
+
+// A rate too high for the clock to put a gap between arrivals does not produce
+// a wrong answer, it produces no answer: every arrival lands on the instant the
+// last one did, the horizon is never reached, and the run never returns. A
+// caller that cannot interrupt it — which is every caller — is simply stuck.
+//
+// It is the mirror of a duration too long to represent, and the reason both
+// belong here rather than in whichever transport happened to notice first.
+func TestARateTooFastForTheClockIsRejected(t *testing.T) {
+	t.Parallel()
+	w := model.Workload{
+		RateRPS: 1, ReadFraction: 1, Duration: 1000, Seed: 1, WarmupFraction: 0,
+	}
+	// One arrival per nanosecond is the finest the clock can space.
+	w.RateRPS = 1e9
+	if err := w.Validate(); err != nil {
+		t.Errorf("Validate() at one arrival per nanosecond = %v, want nil", err)
+	}
+	w.RateRPS = 1e9 + 1
+	if err := w.Validate(); !errors.Is(err, model.ErrWorkload) {
+		t.Errorf("Validate() above one arrival per nanosecond = %v, want ErrWorkload", err)
+	}
+	// The rate that hangs: fast enough that the mean gap truncates to zero.
+	w.RateRPS = 1.5e9
+	if err := w.Validate(); !errors.Is(err, model.ErrParamRange) {
+		t.Errorf("Validate() at 1.5e9 rps = %v, want ErrParamRange", err)
+	}
+}

@@ -19,6 +19,17 @@ func (m Millis) Duration() time.Duration {
 	return time.Duration(float64(m) * float64(time.Millisecond))
 }
 
+// MillisOf converts back, for results leaving the simulation.
+//
+// The pair belongs together and belongs here. A transport that did this
+// arithmetic itself would be a second place for the unit to be decided, and
+// the failure that follows is silent: a latency reported in nanoseconds looks
+// exactly like a latency reported in milliseconds by a system a million times
+// slower.
+func MillisOf(d time.Duration) Millis {
+	return Millis(float64(d) / float64(time.Millisecond))
+}
+
 // LoadBalancerParams configures a load balancer.
 type LoadBalancerParams struct {
 	Algorithm Algorithm `json:"algorithm"`
@@ -31,7 +42,10 @@ func (p LoadBalancerParams) validate() error {
 		return fmt.Errorf("%w: algorithm %q is not one of the known strategies",
 			ErrParamRange, p.Algorithm)
 	}
-	return nonNegative("overheadMs", float64(p.Overhead))
+	if err := nonNegative("overheadMs", float64(p.Overhead)); err != nil {
+		return err
+	}
+	return representable("overheadMs", float64(p.Overhead))
 }
 
 // ServiceParams configures a pool of identical application servers.
@@ -53,6 +67,9 @@ func (p ServiceParams) validate() error {
 	if err := aboveZero("meanServiceMs", float64(p.MeanService)); err != nil {
 		return err
 	}
+	if err := representable("meanServiceMs", float64(p.MeanService)); err != nil {
+		return err
+	}
 	return atLeastInt("queueCapacity", p.QueueCapacity, 0)
 }
 
@@ -70,7 +87,10 @@ func (p CacheParams) validate() error {
 	if err := fraction("hitRatio", p.HitRatio); err != nil {
 		return err
 	}
-	return nonNegative("hitLatencyMs", float64(p.HitLatency))
+	if err := nonNegative("hitLatencyMs", float64(p.HitLatency)); err != nil {
+		return err
+	}
+	return representable("hitLatencyMs", float64(p.HitLatency))
 }
 
 // DatabaseParams configures a primary with optional read replicas.
@@ -94,7 +114,13 @@ func (p DatabaseParams) validate() error {
 	if err := aboveZero("meanReadMs", float64(p.MeanRead)); err != nil {
 		return err
 	}
+	if err := representable("meanReadMs", float64(p.MeanRead)); err != nil {
+		return err
+	}
 	if err := aboveZero("meanWriteMs", float64(p.MeanWrite)); err != nil {
+		return err
+	}
+	if err := representable("meanWriteMs", float64(p.MeanWrite)); err != nil {
 		return err
 	}
 	return atLeastInt("poolSize", p.PoolSize, 1)
@@ -113,6 +139,33 @@ func (p DatabaseParams) validate() error {
 //
 // Getting this backwards would not fail loudly. A zero mean would reach the
 // sampler and return NaN or +Inf for every request that touched it.
+
+// maxRepresentableMillis is the longest span a time.Duration can hold.
+//
+// Beyond it Millis.Duration overflows, and Go leaves an out-of-range
+// float-to-integer conversion up to the platform: in practice a large negative
+// number. A negative duration is not loudly wrong anywhere downstream. As a
+// run length it makes the simulation end before it starts, and the engine
+// reports a successful run of nothing; as a service time it schedules
+// completions into the past, and the clock walks backwards. Both are answers
+// nobody would question, which is what makes the check worth having.
+const maxRepresentableMillis = float64(math.MaxInt64) / float64(time.Millisecond)
+
+// representable rejects a duration too long for the clock to express.
+//
+// The boundary is rejected along with everything past it, because the boundary
+// is itself unrepresentable: float64 cannot hold MaxInt64 exactly and rounds it
+// up to 2^63, one nanosecond more than a Duration can carry. Verified rather
+// than reasoned about — at maxRepresentableMillis the conversion lands on
+// -9223372036854775808, and one float step below it lands on a positive
+// 9223372036854773760.
+func representable(name string, v float64) error {
+	if v >= maxRepresentableMillis {
+		return fmt.Errorf("%w: %s is %g ms, longer than a simulation clock can express (%g ms)",
+			ErrParamRange, name, v, maxRepresentableMillis)
+	}
+	return nil
+}
 
 // finite rejects NaN and the infinities, which the comparisons below let
 // through in silence: NaN is neither less than nor greater than anything, so
