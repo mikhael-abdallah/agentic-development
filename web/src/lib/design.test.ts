@@ -1,0 +1,269 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  type Design,
+  addNode,
+  connect,
+  designOf,
+  disconnect,
+  emptyDesign,
+  layoutOf,
+  moveNode,
+  removeNode,
+  replaceNode,
+  selectNode,
+  uniqueId,
+  whyNotConnect,
+} from "@/lib/design";
+import type { Scenario } from "@/lib/topology";
+
+const SOMEWHERE = { x: 100, y: 100 };
+
+/** A design shaped like the shortener: client → service → database. */
+function chain(): Design {
+  let design = addNode(emptyDesign(), "service", SOMEWHERE);
+  design = addNode(design, "database", SOMEWHERE);
+  design = connect(design, "client", "service");
+  return connect(design, "service", "database");
+}
+
+function edgeList(design: Design): string[] {
+  return design.topology.edges.map((edge) => `${edge.from}->${edge.to}`);
+}
+
+describe("emptyDesign", () => {
+  it("starts with the one client every design needs", () => {
+    const design = emptyDesign();
+    expect(design.topology.nodes.map((node) => node.kind)).toEqual(["client"]);
+    expect(design.topology.edges).toEqual([]);
+    expect(design.positions.has("client")).toBe(true);
+  });
+});
+
+describe("uniqueId", () => {
+  it("names the first of a kind after the kind", () => {
+    expect(uniqueId(emptyDesign().topology, "service")).toBe("service");
+  });
+
+  it("numbers the ones after it", () => {
+    const design = addNode(addNode(emptyDesign(), "service", SOMEWHERE), "service", SOMEWHERE);
+    expect(design.topology.nodes.map((node) => node.id)).toEqual([
+      "client",
+      "service",
+      "service-2",
+    ]);
+    expect(uniqueId(design.topology, "service")).toBe("service-3");
+  });
+
+  // Ids are the engine's key for a component, and two nodes sharing one is a
+  // design it refuses outright.
+  it("never returns an id already in the design", () => {
+    let design = emptyDesign();
+    for (let i = 0; i < 5; i++) {
+      design = addNode(design, "cache", SOMEWHERE);
+    }
+    const ids = design.topology.nodes.map((node) => node.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("addNode", () => {
+  it("places the component where it was dropped and selects it", () => {
+    const design = addNode(emptyDesign(), "cache", SOMEWHERE);
+    expect(design.positions.get("cache")).toEqual(SOMEWHERE);
+    expect(design.selected).toBe("cache");
+  });
+
+  it("leaves the design it was given alone", () => {
+    const before = emptyDesign();
+    addNode(before, "cache", SOMEWHERE);
+    expect(before.topology.nodes).toHaveLength(1);
+    expect(before.positions.has("cache")).toBe(false);
+  });
+});
+
+describe("removeNode", () => {
+  it("takes the component's edges with it", () => {
+    const design = removeNode(chain(), "service");
+    expect(design.topology.nodes.map((node) => node.id)).toEqual(["client", "database"]);
+    expect(edgeList(design)).toEqual([]);
+    expect(design.positions.has("service")).toBe(false);
+  });
+
+  it("clears the selection when the selected component goes", () => {
+    const design = removeNode(selectNode(chain(), "database"), "database");
+    expect(design.selected).toBeNull();
+  });
+
+  it("keeps a selection that is not the component being removed", () => {
+    const design = removeNode(selectNode(chain(), "client"), "database");
+    expect(design.selected).toBe("client");
+  });
+});
+
+describe("moveNode", () => {
+  it("moves a component that is there", () => {
+    const design = moveNode(chain(), "service", { x: 5, y: 6 });
+    expect(design.positions.get("service")).toEqual({ x: 5, y: 6 });
+  });
+
+  it("ignores one that is not, rather than inventing a position for it", () => {
+    const before = chain();
+    const after = moveNode(before, "nothing", { x: 5, y: 6 });
+    expect(after).toBe(before);
+  });
+});
+
+describe("replaceNode", () => {
+  it("swaps a component for the edited one and leaves the rest alone", () => {
+    const design = replaceNode(chain(), {
+      id: "service",
+      kind: "service",
+      service: { instances: 9, meanServiceMs: 1, queueCapacity: 0 },
+    });
+    expect(design.topology.nodes.find((node) => node.id === "service")?.service?.instances).toBe(9);
+    expect(design.topology.nodes).toHaveLength(3);
+    expect(edgeList(design)).toEqual(["client->service", "service->database"]);
+  });
+});
+
+describe("whyNotConnect", () => {
+  // Every one of these is a rule the engine enforces as well. Refusing them
+  // while the pointer is down beats accepting a design that will not run.
+  const cases: [string, string, string, RegExp][] = [
+    ["a component calling itself", "service", "service", /cannot call itself/],
+    ["an edge to a component that is not there", "service", "ghost", /not in this design/],
+    ["an edge from a component that is not there", "ghost", "service", /not in this design/],
+    ["traffic back to the client", "service", "client", /nothing sends traffic to it/],
+    ["a connection already drawn", "client", "service", /already there/],
+    ["a circle", "database", "service", /circle/],
+  ];
+
+  for (const [name, from, to, reason] of cases) {
+    it(`refuses ${name}`, () => {
+      expect(whyNotConnect(chain(), from, to)).toMatch(reason);
+    });
+  }
+
+  it("allows an edge that is none of those", () => {
+    expect(whyNotConnect(chain(), "client", "database")).toBeNull();
+  });
+
+  // A diamond reaches the same component down two paths. The walk has to stop
+  // at the one it has already been to, or a design that merely fans out and
+  // back in would be reported as a circle.
+  it("allows an edge into a design that fans out and back in", () => {
+    let design = addNode(emptyDesign(), "loadBalancer", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
+    design = addNode(design, "cache", SOMEWHERE);
+    design = addNode(design, "database", SOMEWHERE);
+    design = addNode(design, "service", SOMEWHERE);
+    design = connect(design, "client", "loadBalancer");
+    design = connect(design, "loadBalancer", "service");
+    design = connect(design, "loadBalancer", "cache");
+    design = connect(design, "service", "database");
+    design = connect(design, "cache", "database");
+    expect(edgeList(design)).toHaveLength(5);
+    expect(whyNotConnect(design, "service-2", "loadBalancer")).toBeNull();
+  });
+
+  // The cycle check follows the whole chain, not just the edge in front of it.
+  it("refuses a circle closed through a longer path", () => {
+    let design = addNode(chain(), "cache", SOMEWHERE);
+    design = connect(design, "database", "cache");
+    expect(whyNotConnect(design, "cache", "client")).toMatch(/nothing sends traffic to it/);
+    expect(whyNotConnect(design, "cache", "service")).toMatch(/circle/);
+  });
+});
+
+describe("connect", () => {
+  it("draws an edge that is allowed", () => {
+    expect(edgeList(chain())).toEqual(["client->service", "service->database"]);
+  });
+
+  it("leaves the design untouched when the edge is refused", () => {
+    const before = chain();
+    expect(connect(before, "database", "service")).toBe(before);
+  });
+});
+
+describe("disconnect", () => {
+  it("removes the one edge and no other", () => {
+    expect(edgeList(disconnect(chain(), "client", "service"))).toEqual(["service->database"]);
+  });
+
+  it("ignores an edge that was never drawn", () => {
+    expect(edgeList(disconnect(chain(), "client", "database"))).toHaveLength(2);
+  });
+});
+
+describe("layoutOf", () => {
+  it("puts a chain in the order a request meets it", () => {
+    const positions = layoutOf(chain().topology);
+    const x = (id: string) => positions.get(id)?.x ?? 0;
+    expect(x("client")).toBeLessThan(x("service"));
+    expect(x("service")).toBeLessThan(x("database"));
+  });
+
+  it("stacks components of the same layer rather than overlapping them", () => {
+    let design = emptyDesign();
+    design = addNode(design, "service", SOMEWHERE);
+    design = addNode(design, "cache", SOMEWHERE);
+    design = connect(design, "client", "service");
+    design = connect(design, "client", "cache");
+    const positions = layoutOf(design.topology);
+    expect(positions.get("service")?.x).toBe(positions.get("cache")?.x);
+    expect(positions.get("service")?.y).not.toBe(positions.get("cache")?.y);
+  });
+
+  // Longest path, not shortest: a component reached both directly and through
+  // a chain belongs after the chain, or it lands on top of what feeds it.
+  it("places a component after the longest path that reaches it", () => {
+    let design = chain();
+    design = connect(design, "client", "database");
+    const positions = layoutOf(design.topology);
+    const x = (id: string) => positions.get(id)?.x ?? 0;
+    expect(x("database")).toBeGreaterThan(x("service"));
+  });
+
+  it("gives every component a position", () => {
+    const design = chain();
+    const positions = layoutOf(design.topology);
+    for (const node of design.topology.nodes) {
+      expect(positions.get(node.id), `${node.id} was not placed`).toBeDefined();
+    }
+  });
+
+  // A design being edited is allowed to be wrong in ways a validated one is
+  // not, and a layout pass that ran forever on one would take the tab with it.
+  it("terminates on a topology with a circle in it", () => {
+    const positions = layoutOf({
+      nodes: [
+        { id: "a", kind: "service" },
+        { id: "b", kind: "service" },
+      ],
+      edges: [
+        { from: "a", to: "b" },
+        { from: "b", to: "a" },
+      ],
+    });
+    expect(positions.size).toBe(2);
+  });
+});
+
+describe("designOf", () => {
+  const scenario: Scenario = {
+    id: "s",
+    title: "t",
+    description: "d",
+    goal: "g",
+    topology: chain().topology,
+    workload: { rateRps: 1, readFraction: 1, durationMs: 1, seed: 1, warmupFraction: 0 },
+  };
+
+  it("lays out a scenario that arrived without coordinates", () => {
+    const design = designOf(scenario);
+    expect(design.positions.size).toBe(design.topology.nodes.length);
+    expect(design.selected).toBeNull();
+  });
+});
