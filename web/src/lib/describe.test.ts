@@ -54,7 +54,7 @@ describe("describeParams", () => {
     const summary = describeParams({
       id: "c",
       kind: "cache",
-      cache: { hitRatio: 0.85, hitLatencyMs: 0.5 },
+      cache: { hitRatio: 0.85, hitLatencyMs: 0.5, writePolicy: "writeThrough" },
     });
     expect(summary).toBe("85% hits");
   });
@@ -102,7 +102,7 @@ function shortener() {
 describe("edgeContract", () => {
   it("has something to say for every kind in the contract", () => {
     for (const kind of NODE_KINDS) {
-      expect(edgeContract(kind).length).toBeGreaterThan(0);
+      expect(edgeContract(newNode(kind, kind)).length).toBeGreaterThan(0);
     }
   });
 
@@ -110,14 +110,25 @@ describe("edgeContract", () => {
   // forwards less than it receives. Measured against the engine: at a 0.85 hit
   // ratio and 0.95 reads the store saw 0.1882 of what the cache saw, against
   // 0.15 × 0.95 + 0.05 = 0.1925 predicted.
-  it("says a cache forwards only misses and writes", () => {
-    expect(edgeContract("cache")).toMatch(/miss/);
-    expect(edgeContract("cache")).toMatch(/write/);
+  it("says a cache forwards misses and writes", () => {
+    const carried = edgeContract(newNode("cache", "cache"));
+    expect(carried).toMatch(/miss/);
+    expect(carried).toMatch(/write/);
+  });
+
+  // Write-back is the one policy under which a write does not cross this edge,
+  // and a label still promising "and every write" would be stating a contract
+  // the simulator does not honour.
+  it("says a write-back cache keeps the writes", () => {
+    const node = newNode("cache", "cache");
+    const back = { ...node, cache: { ...node.cache, writePolicy: "writeBack" as const } };
+    expect(edgeContract(back as typeof node)).toMatch(/misses only/);
+    expect(edgeContract(back as typeof node)).not.toMatch(/and every write/);
   });
 
   it("says everything else forwards what it was given", () => {
     for (const kind of ["client", "service"] as const) {
-      expect(edgeContract(kind)).toBe("every request");
+      expect(edgeContract(newNode(kind, kind))).toBe("every request");
     }
   });
 });

@@ -18,6 +18,21 @@ export type NodeKind = (typeof NODE_KINDS)[number];
 export const ALGORITHMS = ["roundRobin", "leastConnections", "random"] as const;
 export type Algorithm = (typeof ALGORITHMS)[number];
 
+/**
+ * Which way a write goes past a cache. Mirrors WritePolicy in
+ * engine/internal/model/kind.go, safe default first.
+ *
+ * A read is what a cache exists for and the hit ratio settles it. A write
+ * cannot be answered from a cache — the store has to record it — so the only
+ * question left is what the cache does on the way, and these are the three
+ * ordinary answers. They put different load on the store and give the caller
+ * different answers about when a write is done.
+ */
+export const WRITE_POLICIES = ["writeThrough", "writeAround", "writeBack"] as const;
+// Not exported yet: nothing outside this file names the type until there is a
+// control that sets one. knip fails the build on an export nothing imports.
+type WritePolicy = (typeof WRITE_POLICIES)[number];
+
 export interface LoadBalancerParams {
   algorithm: Algorithm;
   overheadMs: number;
@@ -33,6 +48,7 @@ export interface ServiceParams {
 export interface CacheParams {
   hitRatio: number;
   hitLatencyMs: number;
+  writePolicy: WritePolicy;
 }
 
 export interface DatabaseParams {
@@ -166,7 +182,7 @@ export const PARAMS_KEY = {
 export const PARAM_FIELDS = {
   loadBalancer: { algorithm: true, overheadMs: true },
   service: { instances: true, meanServiceMs: true, queueCapacity: true },
-  cache: { hitRatio: true, hitLatencyMs: true },
+  cache: { hitRatio: true, hitLatencyMs: true, writePolicy: true },
   database: { replicas: true, meanReadMs: true, meanWriteMs: true, poolSize: true },
 } satisfies {
   loadBalancer: Fields<LoadBalancerParams>;
@@ -216,7 +232,7 @@ export const SCENARIO_FIELDS = {
 export const DEFAULT_PARAMS = {
   loadBalancer: { algorithm: "leastConnections", overheadMs: 0.5 },
   service: { instances: 4, meanServiceMs: 8, queueCapacity: 500 },
-  cache: { hitRatio: 0.85, hitLatencyMs: 0.5 },
+  cache: { hitRatio: 0.85, hitLatencyMs: 0.5, writePolicy: "writeThrough" },
   database: { replicas: 1, meanReadMs: 12, meanWriteMs: 30, poolSize: 2 },
 } satisfies Record<ParamsKey, unknown> & {
   loadBalancer: LoadBalancerParams;

@@ -18,13 +18,25 @@ import (
 // writes cost the same here so the substitution changes no measurement: a
 // single connection serves them, as a single instance did.
 func cached(ratio float64, hitLatency, storeMean model.Millis) model.Topology {
+	return cachedWith(ratio, hitLatency, storeMean, "")
+}
+
+// cachedWith is cached with a write policy named. The empty policy is what
+// every design written before the field existed carries, and it has to keep
+// meaning write-through.
+func cachedWith(
+	ratio float64,
+	hitLatency, storeMean model.Millis,
+	policy model.WritePolicy,
+) model.Topology {
 	return model.Topology{
 		Nodes: []model.Node{
 			{ID: "client", Kind: model.KindClient},
 			frontend(),
 			{ID: "cache", Kind: model.KindCache, Cache: &model.CacheParams{
-				HitRatio:   ratio,
-				HitLatency: hitLatency,
+				HitRatio:    ratio,
+				HitLatency:  hitLatency,
+				WritePolicy: policy,
 			}},
 			{ID: "store", Kind: model.KindDatabase, Database: &model.DatabaseParams{
 				Replicas:  0,
@@ -196,6 +208,116 @@ func TestACachedDesignStillRepeats(t *testing.T) {
 		}
 		if !same(again, first) {
 			t.Fatalf("repeat %d differed:\n got %+v\nwant %+v", i, again, first)
+		}
+	}
+}
+
+// The three write policies, told apart by the two things a policy actually
+// changes: what the store is asked to do, and what the caller waits for.
+//
+// Every case runs the same design under the same seed, so the only difference
+// between them is the policy. That is also why the hit-ratio draw happens for
+// writes as well as reads — without it, changing the policy would shift every
+// later draw and these would not be comparable.
+func TestWritePoliciesDifferInWhatTheStoreSees(t *testing.T) {
+	t.Parallel()
+	const lookup model.Millis = 2
+	const store model.Millis = 40
+
+	tests := []struct {
+		name       string
+		policy     model.WritePolicy
+		storeSees  bool
+		waitsOnCch bool
+	}{
+		{"write-through sends it on and pays the lookup", model.WriteThrough, true, true},
+		{"write-around sends it on without touching the cache", model.WriteAround, true, false},
+		{"write-back answers at the cache and the store never sees it", model.WriteBack, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			res, err := sim.Run(cachedWith(0.9, lookup, store, tt.policy), writes(20, 7))
+			if err != nil {
+				t.Fatalf("Run() unexpected error: %v", err)
+			}
+			served := res.Nodes["store"].Served
+			if tt.storeSees != (served > 0) {
+				t.Errorf("the store served %d writes, want storeSees=%v", served, tt.storeSees)
+			}
+			// A request that never reaches a 40ms store costs about the 2ms
+			// lookup; one that does costs both. The threshold is between them
+			// rather than at either, so it does not depend on the draw.
+			cheap := res.Latency.Mean < (lookup + store/2).Duration()
+			if cheap != !tt.storeSees {
+				t.Errorf("mean latency %v with the store %s",
+					res.Latency.Mean, map[bool]string{true: "in the path", false: "out of it"}[tt.storeSees])
+			}
+		})
+	}
+}
+
+// The saving write-around is chosen for, stated as the comparison someone
+// would actually make: the same writes, the same store, one policy consulting
+// the cache on the way past and the other not.
+func TestWriteAroundIsCheaperThanWriteThrough(t *testing.T) {
+	t.Parallel()
+	const lookup model.Millis = 5
+	through, err := sim.Run(cachedWith(0.9, lookup, 10, model.WriteThrough), writes(20, 11))
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	around, err := sim.Run(cachedWith(0.9, lookup, 10, model.WriteAround), writes(20, 11))
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if around.Latency.Mean >= through.Latency.Mean {
+		t.Errorf("write-around mean %v, write-through mean %v: expected the cheaper one to be cheaper",
+			around.Latency.Mean, through.Latency.Mean)
+	}
+	// Both still reach the store: skipping the cache is not skipping the write.
+	if around.Nodes["store"].Served == 0 {
+		t.Error("write-around lost the writes: the store served none of them")
+	}
+}
+
+// An absent policy is what every design saved before the field existed
+// carries. It has to keep meaning what those designs already did, or opening
+// one changes its answer without anyone touching it.
+func TestAnAbsentWritePolicyIsWriteThrough(t *testing.T) {
+	t.Parallel()
+	absent, err := sim.Run(cachedWith(0.9, 3, 12, ""), writes(30, 5))
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	named, err := sim.Run(cachedWith(0.9, 3, 12, model.WriteThrough), writes(30, 5))
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if !same(absent, named) {
+		t.Errorf("a design with no write policy ran differently from write-through:\n %+v\n %+v",
+			absent, named)
+	}
+}
+
+// Reads are the cache's own business and no policy touches them. A policy that
+// moved the hit ratio would be answering a question it was not asked.
+func TestWritePolicyLeavesReadsAlone(t *testing.T) {
+	t.Parallel()
+	policies := model.WritePolicies()
+	results := make([]sim.Result, 0, len(policies))
+	for _, policy := range policies {
+		res, err := sim.Run(cachedWith(0.75, 2, 30, policy), reads(40, 3))
+		if err != nil {
+			t.Fatalf("Run() with %s: %v", policy, err)
+		}
+		results = append(results, res)
+	}
+	for i := 1; i < len(results); i++ {
+		if !same(results[0], results[i]) {
+			t.Errorf("%s changed a read-only run:\n %+v\n %+v",
+				policies[i], results[0], results[i])
 		}
 	}
 }

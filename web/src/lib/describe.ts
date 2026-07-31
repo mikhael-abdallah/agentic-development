@@ -97,10 +97,18 @@ export function describeParams(node: DesignNode): string {
  *   - Only a cache can answer a request itself; everything else forwards.
  *   - `answered() = hit && req.read`, so a write is never a hit.
  *
- * Which makes a cache's outgoing edge exactly "misses, and every write".
- * Measured against the shipped shortener at 0.95 reads and a 0.85 hit ratio:
- * the store saw 0.1882 of what the cache saw, against 0.15 × 0.95 + 0.05 =
- * 0.1925 predicted — agreement to within the noise of ten thousand requests.
+ * Which makes a cache's outgoing edge "misses, and every write" — under every
+ * write policy but one. Measured against the shipped shortener at 0.95 reads
+ * and a 0.85 hit ratio: the store saw 0.1882 of what the cache saw, against
+ * 0.15 × 0.95 + 0.05 = 0.1925 predicted, agreement to within the noise of ten
+ * thousand requests.
+ *
+ * Write-back is the exception and the reason this takes a component rather
+ * than a kind. Under it the cache acknowledges the write and the store catches
+ * up outside the request, so nothing crosses this edge but misses. A label
+ * that read "and every write" there would be stating a contract the simulator
+ * does not honour — which is worse than an unlabelled arrow, because it is an
+ * unlabelled arrow someone believed.
  *
  * Derived from the kinds rather than from a finished run on purpose. Dividing
  * one component's served count by another's gives the share on the edge only
@@ -108,8 +116,8 @@ export function describeParams(node: DesignNode): string {
  * design fans in. The per-component numbers a run does produce are in the
  * results panel, where they are not pretending to be per-edge.
  */
-export function edgeContract(from: NodeKind): string {
-  switch (from) {
+export function edgeContract(from: DesignNode): string {
+  switch (from.kind) {
     case "client":
       return "every request";
     case "loadBalancer":
@@ -117,7 +125,9 @@ export function edgeContract(from: NodeKind): string {
     case "service":
       return "every request";
     case "cache":
-      return "misses, and every write";
+      return from.cache?.writePolicy === "writeBack"
+        ? "misses only — writes stop at the cache"
+        : "misses, and every write";
     case "database":
       // A database has no outgoing edge — `whyNotCall` refuses every one of
       // them — so this is here to keep the switch total rather than to be
@@ -150,32 +160,28 @@ export function contractsOf(
   topology: Topology,
   id: string,
 ): { incoming: Contract[]; outgoing: Contract[] } {
-  const kindOf = new Map(topology.nodes.map((node) => [node.id, node.kind]));
+  const nodeOf = new Map(topology.nodes.map((node) => [node.id, node]));
   const nameOf = (other: string) => {
-    const kind = kindOf.get(other);
-    return kind === undefined ? other : (labelOf(topology, other) ?? kindLabel(kind));
+    const node = nodeOf.get(other);
+    return node === undefined ? other : (node.label ?? kindLabel(node.kind));
+  };
+  const carriedBy = (from: string) => {
+    const node = nodeOf.get(from);
+    return node === undefined ? "" : edgeContract(node);
   };
   const incoming = topology.edges
     .filter((edge) => edge.to === id)
-    .map((edge) => {
-      const kind = kindOf.get(edge.from);
-      return {
-        id: edge.from,
-        other: nameOf(edge.from),
-        carries: kind === undefined ? "" : edgeContract(kind),
-      };
-    });
-  const kind = kindOf.get(id);
+    .map((edge) => ({
+      id: edge.from,
+      other: nameOf(edge.from),
+      carries: carriedBy(edge.from),
+    }));
   const outgoing = topology.edges
     .filter((edge) => edge.from === id)
     .map((edge) => ({
       id: edge.to,
       other: nameOf(edge.to),
-      carries: kind === undefined ? "" : edgeContract(kind),
+      carries: carriedBy(id),
     }));
   return { incoming, outgoing };
-}
-
-function labelOf(topology: Topology, id: string): string | undefined {
-  return topology.nodes.find((node) => node.id === id)?.label;
 }

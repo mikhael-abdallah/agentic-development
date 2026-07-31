@@ -77,10 +77,16 @@ func (p ServiceParams) validate() error {
 type CacheParams struct {
 	// HitRatio is the share of reads answered without going downstream. It is
 	// the single number that decides how much load a cache actually removes.
+	//
+	// Reads only. A write is never a hit: it has to reach the store, and a
+	// cache that absorbed one would be reporting an acknowledged write that
+	// nothing recorded. What a write does instead is WritePolicy's business.
 	HitRatio float64 `json:"hitRatio"`
 	// HitLatency is what a hit costs. A miss costs this plus whatever the
 	// downstream component charges.
 	HitLatency Millis `json:"hitLatencyMs"`
+	// WritePolicy is which way writes go past this cache.
+	WritePolicy WritePolicy `json:"writePolicy"`
 }
 
 func (p CacheParams) validate() error {
@@ -89,6 +95,9 @@ func (p CacheParams) validate() error {
 	}
 	if err := nonNegative("hitLatencyMs", float64(p.HitLatency)); err != nil {
 		return err
+	}
+	if !p.WritePolicy.Valid() {
+		return fmt.Errorf("%w: writePolicy %q", ErrParamRange, p.WritePolicy)
 	}
 	return representable("hitLatencyMs", float64(p.HitLatency))
 }

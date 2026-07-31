@@ -10,6 +10,7 @@ import {
   NODE_FIELDS,
   NODE_KINDS,
   type NodeKind,
+  WRITE_POLICIES,
   whyNotCall,
   PARAMS_KEY,
   PARAM_FIELDS,
@@ -277,5 +278,25 @@ describe("whyNotCall", () => {
   it("refuses every kind calling the client", () => {
     const allowedIntoClient = NODE_KINDS.filter((kind) => whyNotCall(kind, "client") === null);
     expect(allowedIntoClient).toEqual([]);
+  });
+});
+
+// Mirrors WritePolicy in engine/internal/model/kind.go. The engine refuses a
+// policy it does not know, so a value here the engine has never heard of is a
+// control that produces a 400 rather than a simulation.
+describe("WRITE_POLICIES", () => {
+  it("offers the safe default first", () => {
+    expect(WRITE_POLICIES[0]).toBe("writeThrough");
+  });
+
+  it("names three distinct policies", () => {
+    expect(new Set(WRITE_POLICIES).size).toBe(3);
+  });
+
+  // A new cache has to arrive already simulable, and the engine reads an
+  // absent policy as write-through — so sending it explicitly is the same
+  // behaviour said out loud rather than assumed.
+  it("starts a new cache on a policy the engine knows", () => {
+    expect(WRITE_POLICIES).toContain(DEFAULT_PARAMS.cache.writePolicy);
   });
 });

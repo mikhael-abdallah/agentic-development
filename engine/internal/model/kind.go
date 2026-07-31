@@ -86,6 +86,71 @@ func (k NodeKind) Valid() bool {
 	}
 }
 
+// WritePolicy is which way a write goes past a cache.
+//
+// A read is the case a cache exists for and the hit ratio settles it. A write
+// cannot be answered from a cache — the store has to record it — so the only
+// question left is what the cache does on the way, and that is a design
+// decision with three ordinary answers. They are not shades of the same thing:
+// they put different load on the store and give the caller different answers
+// about when a write is done.
+type WritePolicy string
+
+const (
+	// WriteThrough sends the write to the store and keeps the cache current
+	// on the way. The caller waits for both. The cache stays warm, and this
+	// is what a cache does unless someone decided otherwise.
+	WriteThrough WritePolicy = "writeThrough"
+	// WriteAround sends the write straight to the store, leaving the cache
+	// alone. Writes are cheaper by whatever the cache would have cost, and
+	// the entry that was there is now wrong.
+	//
+	// What this model cannot show is the consequence: a hit ratio is not a
+	// key space, so there is no entry to go stale and no read that could
+	// return the old value. The saving is simulated; the risk is not.
+	WriteAround WritePolicy = "writeAround"
+	// WriteBack acknowledges the write at the cache and lets the store catch
+	// up afterwards. The caller waits for the cache alone, and the store
+	// never sees the write inside the measured window — which is why a design
+	// that switches to it appears to make its database write load vanish.
+	//
+	// It is the one policy whose cost this simulator does not measure. A cache
+	// holding writes the store has not taken is a window in which a crash
+	// loses acknowledged data, and nothing here models a crash.
+	WriteBack WritePolicy = "writeBack"
+)
+
+// WritePolicies returns every policy, in the order a form should offer them:
+// the safe default first, then the two that trade something for speed.
+func WritePolicies() []WritePolicy {
+	return []WritePolicy{WriteThrough, WriteAround, WriteBack}
+}
+
+// Valid reports whether p is a policy this package knows, counting the empty
+// value — see [WritePolicy.OrDefault] for why that is not a hole.
+func (p WritePolicy) Valid() bool {
+	switch p {
+	case "", WriteThrough, WriteAround, WriteBack:
+		return true
+	default:
+		return false
+	}
+}
+
+// OrDefault reads an absent policy as write-through.
+//
+// Every design drawn or saved before this field existed carries none, and
+// write-through is what all of them did: the write went to the store and the
+// cache was consulted on the way. Reading the zero value as the behaviour it
+// already had is what lets a design saved yesterday still open today, and
+// what keeps this from being a change to what an old scenario means.
+func (p WritePolicy) OrDefault() WritePolicy {
+	if p == "" {
+		return WriteThrough
+	}
+	return p
+}
+
 // Algorithm is how a load balancer picks among its downstream nodes.
 type Algorithm string
 

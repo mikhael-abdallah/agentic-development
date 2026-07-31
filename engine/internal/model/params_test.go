@@ -249,3 +249,61 @@ func TestARunLongerThanTheClockIsRejected(t *testing.T) {
 		t.Errorf("Validate() with an eleven-day run = %v, want nil", err)
 	}
 }
+
+// A policy the simulator has no behaviour for would be a design it answers
+// about anyway, on whichever branch the zero value happens to fall through.
+func TestWritePolicyRejectsWhatItDoesNotKnow(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		policy model.WritePolicy
+		want   bool
+	}{
+		{model.WriteThrough, true},
+		{model.WriteAround, true},
+		{model.WriteBack, true},
+		// Empty is the design saved before the field existed, not a typo.
+		{"", true},
+		{"writeSideways", false},
+		{"WRITETHROUGH", false},
+	}
+	for _, tt := range tests {
+		if got := tt.policy.Valid(); got != tt.want {
+			t.Errorf("WritePolicy(%q).Valid() = %v, want %v", tt.policy, got, tt.want)
+		}
+	}
+}
+
+func TestAnAbsentWritePolicyReadsAsWriteThrough(t *testing.T) {
+	t.Parallel()
+	if got := model.WritePolicy("").OrDefault(); got != model.WriteThrough {
+		t.Errorf("empty policy read as %q, want %q", got, model.WriteThrough)
+	}
+	for _, policy := range model.WritePolicies() {
+		if got := policy.OrDefault(); got != policy {
+			t.Errorf("%q.OrDefault() = %q, want it left alone", policy, got)
+		}
+	}
+}
+
+// The form offers these in this order, and a policy missing from the list is
+// one nobody can choose however well the engine models it.
+func TestEveryWritePolicyIsOffered(t *testing.T) {
+	t.Parallel()
+	offered := model.WritePolicies()
+	if offered[0] != model.WriteThrough {
+		t.Errorf("the list starts with %q, want the safe default first", offered[0])
+	}
+	seen := map[model.WritePolicy]bool{}
+	for _, policy := range offered {
+		if !policy.Valid() || policy == "" {
+			t.Errorf("WritePolicies() offers %q, which is not a policy", policy)
+		}
+		if seen[policy] {
+			t.Errorf("WritePolicies() offers %q twice", policy)
+		}
+		seen[policy] = true
+	}
+	if len(seen) != 3 {
+		t.Errorf("WritePolicies() offers %d policies, want 3", len(seen))
+	}
+}

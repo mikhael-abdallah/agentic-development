@@ -54,14 +54,14 @@ export function toFlowNodes(design: Design): ComponentNode[] {
  * receives.
  */
 export function toFlowEdges(topology: Topology): Edge[] {
-  const kindOf = new Map(topology.nodes.map((node) => [node.id, node.kind]));
+  const nodeOf = new Map(topology.nodes.map((node) => [node.id, node]));
   return topology.edges.map((edge) => {
-    const kind = kindOf.get(edge.from);
+    const source = nodeOf.get(edge.from);
     return {
       id: edgeId(edge.from, edge.to),
       source: edge.from,
       target: edge.to,
-      label: kind === undefined ? undefined : edgeContract(kind),
+      label: source === undefined ? undefined : edgeContract(source),
       labelShowBg: true,
     };
   });
