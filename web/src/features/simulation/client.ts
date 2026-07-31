@@ -1,4 +1,4 @@
-import type { Topology, Workload } from "@/lib/topology";
+import type { Scenario, Topology, Workload } from "@/lib/topology";
 
 /**
  * Where the engine is.
@@ -109,4 +109,16 @@ export async function simulate(
     signal,
   });
   return resultOf(body as SimulationBody);
+}
+
+/**
+ * The designs the engine ships with.
+ *
+ * They come from the engine rather than from a copy in this bundle, because a
+ * preset is only useful if it is the one the simulator will actually run — and
+ * the engine refuses to start at all if any of them stopped validating. A copy
+ * here would be a second answer to what the shortener is.
+ */
+export async function scenarios(signal?: AbortSignal): Promise<Scenario[]> {
+  return (await ask("/scenarios", { signal })) as Scenario[];
 }

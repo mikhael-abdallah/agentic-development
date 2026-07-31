@@ -404,3 +404,85 @@ body {
     var(--line) var(--fill, 0%) 100%
   );
 }
+
+/* --- library --------------------------------------------------------- */
+
+.library {
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.library__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.library__list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.library__saved {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.library__item {
+  display: grid;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.library__item:hover,
+.library__item:focus-visible {
+  border-color: var(--accent);
+}
+
+.library__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.library__blurb {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.library__save {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.7rem;
+}
+
+.library__button {
+  flex: none;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.library__button:hover,
+.library__button:focus-visible {
+  border-color: var(--accent);
+}
