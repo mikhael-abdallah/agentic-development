@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { DesignCanvas } from "@/features/canvas/DesignCanvas";
+import { Surface } from "@/features/canvas/Surface";
 import { useDesign } from "@/features/canvas/useDesign";
 import { type Design, addNode, connect, emptyDesign } from "@/lib/design";
 import { KIND_MIME } from "@/lib/drag";
@@ -22,7 +22,7 @@ function chain(): Design {
  *  testing: a canvas wired to a stub proves only that props exist. */
 function Harness({ initial }: { readonly initial?: Design }) {
   const controller = useDesign(initial);
-  return <DesignCanvas controller={controller} />;
+  return <Surface controller={controller} />;
 }
 
 function paneOf(container: HTMLElement): Element {
@@ -48,7 +48,7 @@ function dropKind(container: HTMLElement, kind: string): void {
 // file. The decisions behind them — which edges are legal, what removing a
 // component does to its edges — are pure functions in lib/design and are
 // covered there.
-describe("DesignCanvas", () => {
+describe("Surface", () => {
   it("draws every component in the design", () => {
     render(<Harness initial={chain()} />);
     expect(screen.getByText("Client")).toBeDefined();

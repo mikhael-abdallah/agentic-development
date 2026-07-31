@@ -618,3 +618,16 @@ body {
 .library__button:focus-visible {
   border-color: var(--accent);
 }
+
+/* The canvas arrives a moment after the panels either side of it, so the space
+   it is about to fill says so rather than sitting blank. */
+.canvas--loading {
+  display: grid;
+  place-items: center;
+}
+
+.canvas__loading {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
