@@ -6,9 +6,13 @@ import { Inspector } from "@/features/inspector/Inspector";
 import { Palette } from "@/features/palette/Palette";
 import { Library } from "@/features/simulation/Library";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
+import { whyNotRemove } from "@/lib/design";
 
 export default function Home() {
   const controller = useDesign();
+  const selected = controller.design.topology.nodes.find(
+    (node) => node.id === controller.design.selected,
+  );
 
   return (
     <main className="workspace">
@@ -25,10 +29,12 @@ export default function Home() {
         <DesignCanvas controller={controller} />
         <div className="workspace__side">
           <Inspector
-            node={controller.design.topology.nodes.find(
-              (node) => node.id === controller.design.selected,
-            )}
+            node={selected}
             onChange={controller.replace}
+            onRemove={controller.drop}
+            cannotRemove={
+              selected === undefined ? null : whyNotRemove(controller.design, selected.id)
+            }
           />
           <SimulationPanel topology={controller.design.topology} />
           <Library topology={controller.design.topology} onLoad={controller.load} />

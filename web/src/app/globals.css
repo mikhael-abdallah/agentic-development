@@ -162,6 +162,7 @@ body {
 }
 
 .component {
+  position: relative;
   display: grid;
   gap: 0.1rem;
   min-width: 9.5rem;
@@ -211,6 +212,34 @@ body {
   color: var(--muted);
 }
 
+/* Visible always, not on hover. A control that appears only under the pointer
+   answers "how do I remove this" only for someone who already suspected they
+   could — which is the state the canvas was in when it had no control at all. */
+.component__remove {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.component__remove:hover,
+.component__remove:focus-visible {
+  color: var(--panel);
+  background: var(--database);
+  border-color: var(--database);
+}
+
 /* --- inspector ------------------------------------------------------- */
 
 .inspector {
@@ -228,6 +257,26 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
+}
+
+.inspector__remove {
+  width: 100%;
+  margin-top: 0.9rem;
+  padding: 0.4rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--database);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.inspector__remove:hover,
+.inspector__remove:focus-visible {
+  color: var(--panel);
+  background: var(--database);
+  border-color: var(--database);
 }
 
 .field {

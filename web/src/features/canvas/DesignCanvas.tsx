@@ -50,6 +50,11 @@ const FIT = { padding: 0.18, maxZoom: 1, duration: 200 };
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 2;
 
+// React Flow listens for Backspace alone. Delete is the key most people reach
+// for, and pressing it and having nothing happen is indistinguishable from
+// there being no way to remove a component at all.
+const DELETE_KEYS = ["Backspace", "Delete"];
+
 function isKind(value: string): value is NodeKind {
   return NODE_KINDS.includes(value as NodeKind);
 }
@@ -146,6 +151,7 @@ function Surface({ controller }: SurfaceProps) {
         fitViewOptions={FIT}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
+        deleteKeyCode={DELETE_KEYS}
         proOptions={{ hideAttribution: false }}
       >
         <Background />

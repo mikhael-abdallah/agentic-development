@@ -16,6 +16,7 @@ import {
   selectNode,
   uniqueId,
   whyNotConnect,
+  whyNotRemove,
 } from "@/lib/design";
 import type { Scenario } from "@/lib/topology";
 
@@ -336,5 +337,43 @@ describe("componentSignature", () => {
     const design = addNode(emptyDesign(), "cache", SOMEWHERE);
     const linked = connect(design, "client", "cache");
     expect(componentSignature(linked.topology)).toBe(componentSignature(design.topology));
+  });
+});
+
+// React Flow deletes on a keypress of its own, without consulting the design,
+// so this rule is what keeps Backspace from taking the client and leaving a
+// design nothing can put load through.
+describe("whyNotRemove", () => {
+  it("refuses the client, and says why", () => {
+    expect(whyNotRemove(chain(), "client")).toMatch(/load comes from/);
+  });
+
+  it("allows anything else", () => {
+    expect(whyNotRemove(chain(), "service")).toBeNull();
+    expect(whyNotRemove(chain(), "database")).toBeNull();
+  });
+
+  it("refuses a component that is not in the design", () => {
+    expect(whyNotRemove(chain(), "nowhere")).not.toBeNull();
+  });
+});
+
+describe("removeNode refusing", () => {
+  it("keeps the client when something tries to remove it", () => {
+    const before = chain();
+    const after = removeNode(before, "client");
+    expect(after).toBe(before);
+    expect(after.topology.nodes.map((node) => node.id)).toContain("client");
+  });
+
+  it("still removes the edges of a component it does remove", () => {
+    const design = removeNode(chain(), "service");
+    expect(design.topology.nodes.map((node) => node.id)).toEqual(["client", "database"]);
+    expect(design.topology.edges).toEqual([]);
+  });
+
+  it("keeps the design untouched when the component is not there", () => {
+    const before = chain();
+    expect(removeNode(before, "nowhere")).toBe(before);
   });
 });

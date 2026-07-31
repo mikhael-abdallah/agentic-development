@@ -119,10 +119,15 @@ function Params({ node, onChange }: ParamsProps) {
 interface InspectorProps {
   readonly node: DesignNode | undefined;
   readonly onChange: (node: DesignNode) => void;
+  readonly onRemove: (id: string) => void;
+  /** Why this component cannot be removed, or null if it can. Computed by
+   *  `whyNotRemove` rather than re-derived here, so the canvas and this panel
+   *  cannot come to different conclusions about the same component. */
+  readonly cannotRemove: string | null;
 }
 
 /** The selected component's parameters, and what each one does to the answer. */
-export function Inspector({ node, onChange }: InspectorProps) {
+export function Inspector({ node, onChange, onRemove, cannotRemove }: InspectorProps) {
   return (
     <aside className="inspector" aria-label="Parameters">
       <h2 className="inspector__title">Parameters</h2>
@@ -146,6 +151,19 @@ export function Inspector({ node, onChange }: InspectorProps) {
             )}
           </Row>
           <Params node={node} onChange={onChange} />
+          {cannotRemove === null ? (
+            <button
+              type="button"
+              className="inspector__remove"
+              onClick={() => {
+                onRemove(node.id);
+              }}
+            >
+              Remove this component
+            </button>
+          ) : (
+            <p className="field__hint">{cannotRemove}</p>
+          )}
         </>
       )}
     </aside>

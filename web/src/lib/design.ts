@@ -121,9 +121,32 @@ export function addNode(design: Design, kind: NodeKind, at: Position): Design {
   };
 }
 
+/**
+ * Why this component cannot be removed, or null if it can.
+ *
+ * The mirror of `whyNotConnect`, and there for the same reason: a design the
+ * engine will refuse is better prevented while it is being drawn than
+ * explained after a run fails. The client is where load comes from and a
+ * design has exactly one, so removing it leaves a design that cannot be
+ * simulated and nothing to put back in its place.
+ */
+export function whyNotRemove(design: Design, id: string): string | null {
+  const node = design.topology.nodes.find((candidate) => candidate.id === id);
+  if (node === undefined) {
+    return "That component is not in this design.";
+  }
+  if (node.kind === "client") {
+    return "Every design needs its client: it is where the load comes from.";
+  }
+  return null;
+}
+
 /** Removing a component takes its edges with it: an edge to a component that
  *  is not there is the one thing the engine cannot even report a design for. */
 export function removeNode(design: Design, id: string): Design {
+  if (whyNotRemove(design, id) !== null) {
+    return design;
+  }
   const positions = new Map(design.positions);
   positions.delete(id);
   return {
