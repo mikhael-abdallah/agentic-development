@@ -86,6 +86,10 @@ the `server/` rule waits until there are server modules to poison):
   Five types do not justify a codegen toolchain, so the mirror is held in place
   two ways instead: field maps that fail to compile if a name changes on this
   side, and a test that reads the engine's own embedded scenario off disk.
+- The design being edited belongs to the `canvas` slice (`useDesign`), because
+  the canvas is where a design is drawn. The page threads it to the other
+  slices rather than them reaching across for it; anything both ends of an
+  interaction need — the drag MIME type, the edit rules — lives in `lib`.
 - Where a component was *drawn* is not part of that contract. The engine
   simulates a graph and has no opinion about layout, so coordinates live beside
   the topology in `lib/design.ts` and a scenario arriving without them gets one
