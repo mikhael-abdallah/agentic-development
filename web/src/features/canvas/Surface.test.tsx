@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Surface } from "@/features/canvas/Surface";
 import { useDesign } from "@/features/canvas/useDesign";
@@ -20,9 +20,15 @@ function chain(): Design {
 
 /** The canvas under a real controller, because the pair is what is worth
  *  testing: a canvas wired to a stub proves only that props exist. */
-function Harness({ initial }: { readonly initial?: Design }) {
+function Harness({
+  initial,
+  onEdit = () => undefined,
+}: {
+  readonly initial?: Design;
+  readonly onEdit?: (id: string) => void;
+}) {
   const controller = useDesign(initial);
-  return <Surface controller={controller} />;
+  return <Surface controller={controller} onEdit={onEdit} />;
 }
 
 function paneOf(container: HTMLElement): Element {
@@ -96,6 +102,16 @@ describe("Surface", () => {
     const nodes = container.querySelectorAll(".react-flow__node");
     fireEvent.click(nodes[1] ?? container);
     expect(container.querySelectorAll('.component[data-selected="true"]')).toHaveLength(1);
+  });
+
+  // Selecting and choosing to work on a component are the same gesture. The
+  // canvas reports the second rather than deciding what it means, because what
+  // happens next — the settings coming up over the design — is the page's.
+  it("says which component was picked to be worked on", () => {
+    const onEdit = vi.fn();
+    const { container } = render(<Harness initial={chain()} onEdit={onEdit} />);
+    fireEvent.click(container.querySelectorAll(".react-flow__node")[1] ?? container);
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith("service");
   });
 
   it("clears the selection when the canvas itself is clicked", () => {
