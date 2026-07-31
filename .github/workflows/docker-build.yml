@@ -1,0 +1,116 @@
+# Builds the image and proves it runs.
+#
+# A separate workflow, not a job in guardrails.yml, for two reasons that both
+# come down to where it can run:
+#
+#   * The self-hosted runner the gates use has no Docker, and is not getting
+#     any. Everything else in this repository is a script the pre-push hook can
+#     run locally, and this one cannot be — so `parity-check` and the
+#     `guards.ci-jobs` ratchet, both scoped to guardrails.yml, stay accurate
+#     rather than gaining an exception. Same precedent as scorecard.yml.
+#   * It needs a GitHub-hosted runner, which is free for public repositories
+#     and leaves the two-core box for the gates that block a merge.
+#
+# It is still a required check: a Dockerfile nobody builds is exactly the
+# untested artifact this repository exists to prevent, and the README tells
+# people to run `docker build`.
+
+name: docker-build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    # A base image can pick up a vulnerability, and a registry can lose a
+    # digest, without anything here changing.
+    - cron: "43 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        run: docker build -t simulator:ci .
+
+      # Claims the Dockerfile makes that are worth checking rather than
+      # trusting. Both are one line to lose and invisible if lost.
+      - name: The runtime image has no shell and does not run as root
+        run: |
+          if docker run --rm --entrypoint /bin/sh simulator:ci -c true; then
+            echo "the runtime image has a shell in it" >&2
+            exit 1
+          fi
+          user=$(docker inspect --format '{{.Config.User}}' simulator:ci)
+          if [ "$user" != "nonroot" ]; then
+            echo "the image runs as '$user', want nonroot" >&2
+            exit 1
+          fi
+
+      - name: Start it
+        run: docker run -d --name simulator -p 8080:8080 simulator:ci
+
+      - name: Wait for it to answer
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf localhost:8080/healthz > /dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "${healthy:-}" ]; then
+            echo "the container never became healthy" >&2
+            docker logs simulator
+            exit 1
+          fi
+
+      # The failure this catches is the whole reason the image exists: the
+      # engine builds, the app builds, and the two never meet because -assets
+      # points at nothing.
+      - name: It serves the app
+        run: |
+          curl -sf localhost:8080/ | grep -q "<title>System Design Simulator</title>"
+
+      - name: Hashed assets are served, and cached the way they claim to be
+        run: |
+          chunk=$(curl -sf localhost:8080/ | grep -o '/_next/static/[^"]*\.js' | head -1)
+          if [ -z "$chunk" ]; then
+            echo "the page referenced no hashed chunk" >&2
+            exit 1
+          fi
+          curl -sfI "localhost:8080$chunk" \
+            | grep -qi 'cache-control: public, max-age=31536000, immutable'
+
+      # Runs the scenario the image ships, through the API the image serves,
+      # rather than a design written here: a preset that stopped simulating is
+      # a broken product even when every unit test passes.
+      - name: It simulates the scenario it ships
+        run: |
+          curl -sf localhost:8080/scenarios \
+            | jq '{topology: .[0].topology, workload: .[0].workload}' > body.json
+          curl -sf -X POST localhost:8080/simulate \
+            -H 'Content-Type: application/json' --data @body.json > result.json
+          jq -e '.completed > 0 and .latency.p99Ms > 0 and .bottleneck != ""' result.json
+
+      - name: What it said
+        if: always()
+        run: |
+          docker logs simulator || true
+          cat result.json || true
+
+      - name: Stop it
+        if: always()
+        run: docker rm -f simulator || true

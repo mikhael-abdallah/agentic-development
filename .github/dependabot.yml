@@ -19,6 +19,20 @@ updates:
       actions:
         patterns:
           - "*"
+  # The Dockerfile pins its base images by digest, which is what makes a
+  # rebuild reproducible — and also what stops it from ever picking up a
+  # patched base on its own. Without this entry those three digests would
+  # silently become the oldest dependency in the repository.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns:
+          - "*"
   - package-ecosystem: gomod
     directory: /engine
     schedule:
