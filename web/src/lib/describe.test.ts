@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { algorithmLabel, describeParams, kindBlurb, kindLabel } from "@/lib/describe";
+import {
+  algorithmLabel,
+  contractsOf,
+  describeParams,
+  edgeContract,
+  kindBlurb,
+  kindLabel,
+} from "@/lib/describe";
+import { addNode, connect, emptyDesign } from "@/lib/design";
 import { ALGORITHMS, NODE_KINDS, newNode } from "@/lib/topology";
 
 describe("kindLabel and kindBlurb", () => {
@@ -77,5 +85,107 @@ describe("describeParams", () => {
     for (const kind of NODE_KINDS.filter((k) => k !== "client")) {
       expect(describeParams({ id: "x", kind })).toBe("");
     }
+  });
+});
+
+/** client → service → cache → database, the shape of the shipped shortener. */
+function shortener() {
+  let design = addNode(emptyDesign(), "service", { x: 0, y: 0 });
+  design = addNode(design, "cache", { x: 0, y: 0 });
+  design = addNode(design, "database", { x: 0, y: 0 });
+  design = connect(design, "client", "service");
+  design = connect(design, "service", "cache");
+  design = connect(design, "cache", "database");
+  return design;
+}
+
+describe("edgeContract", () => {
+  it("has something to say for every kind in the contract", () => {
+    for (const kind of NODE_KINDS) {
+      expect(edgeContract(kind).length).toBeGreaterThan(0);
+    }
+  });
+
+  // The claim that makes a cache worth drawing, and the only kind that
+  // forwards less than it receives. Measured against the engine: at a 0.85 hit
+  // ratio and 0.95 reads the store saw 0.1882 of what the cache saw, against
+  // 0.15 × 0.95 + 0.05 = 0.1925 predicted.
+  it("says a cache forwards only misses and writes", () => {
+    expect(edgeContract("cache")).toMatch(/miss/);
+    expect(edgeContract("cache")).toMatch(/write/);
+  });
+
+  it("says everything else forwards what it was given", () => {
+    for (const kind of ["client", "service"] as const) {
+      expect(edgeContract(kind)).toBe("every request");
+    }
+  });
+});
+
+describe("contractsOf", () => {
+  it("reads a component's wiring off the design's own edges", () => {
+    const { incoming, outgoing } = contractsOf(shortener().topology, "cache");
+    expect(incoming.map((c) => c.other)).toEqual(["Service"]);
+    expect(incoming.map((c) => c.carries)).toEqual(["every request"]);
+    expect(outgoing.map((c) => c.other)).toEqual(["Database"]);
+    expect(outgoing.map((c) => c.carries)).toEqual(["misses, and every write"]);
+  });
+
+  // The reason this is read off edges rather than answered from the kind. The
+  // same database is handed different traffic depending on what is in front of
+  // it, and a kind-level answer would have to pick one and be quietly wrong
+  // about the other.
+  it("says a database behind a cache gets less than one read directly", () => {
+    const behindCache = contractsOf(shortener().topology, "database");
+    expect(behindCache.incoming.map((c) => c.carries)).toEqual(["misses, and every write"]);
+
+    let direct = addNode(emptyDesign(), "service", { x: 0, y: 0 });
+    direct = addNode(direct, "database", { x: 0, y: 0 });
+    direct = connect(direct, "client", "service");
+    direct = connect(direct, "service", "database");
+    expect(direct.topology.edges).toHaveLength(2);
+    expect(contractsOf(direct.topology, "database").incoming.map((c) => c.carries)).toEqual([
+      "every request",
+    ]);
+  });
+
+  it("uses a component's own name when it has one", () => {
+    let design = shortener();
+    design = {
+      ...design,
+      topology: {
+        ...design.topology,
+        nodes: design.topology.nodes.map((node) =>
+          node.id === "database" ? { ...node, label: "Key store" } : node,
+        ),
+      },
+    };
+    expect(contractsOf(design.topology, "cache").outgoing[0]?.other).toBe("Key store");
+  });
+
+  it("reports both sides as empty for a component nothing is wired to", () => {
+    const design = addNode(emptyDesign(), "cache", { x: 0, y: 0 });
+    const { incoming, outgoing } = contractsOf(design.topology, "cache");
+    expect(incoming).toEqual([]);
+    expect(outgoing).toEqual([]);
+  });
+});
+
+// Two unnamed components of the same kind both read as "Service", and both may
+// feed the same target — so the name cannot be what tells one contract from
+// another.
+describe("contractsOf with components that share a name", () => {
+  it("keeps the components apart when their names collide", () => {
+    let design = addNode(emptyDesign(), "service", { x: 0, y: 0 });
+    design = addNode(design, "service", { x: 0, y: 0 });
+    design = addNode(design, "database", { x: 0, y: 0 });
+    design = connect(design, "client", "service");
+    design = connect(design, "client", "service-2");
+    design = connect(design, "service", "database");
+    design = connect(design, "service-2", "database");
+    expect(design.topology.edges).toHaveLength(4);
+    const { incoming } = contractsOf(design.topology, "database");
+    expect(incoming.map((c) => c.other)).toEqual(["Service", "Service"]);
+    expect(incoming.map((c) => c.id)).toEqual(["service", "service-2"]);
   });
 });

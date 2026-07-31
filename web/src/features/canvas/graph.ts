@@ -2,7 +2,7 @@ import type { Edge, EdgeChange, Node, NodeChange } from "@xyflow/react";
 
 import type { DesignController } from "@/features/canvas/useDesign";
 import type { Design, Position } from "@/lib/design";
-import { describeParams, kindLabel } from "@/lib/describe";
+import { describeParams, edgeContract, kindLabel } from "@/lib/describe";
 import type { NodeKind, Topology } from "@/lib/topology";
 
 /**
@@ -44,12 +44,27 @@ export function toFlowNodes(design: Design): ComponentNode[] {
   }));
 }
 
+/**
+ * Edges, each labelled with what crosses it.
+ *
+ * An unlabelled arrow says two components are connected and nothing about what
+ * connects them, which is what makes a design read as a picture of boxes. The
+ * label is the source's contract: an edge carries whatever the component at its
+ * tail forwards, and a cache is the only kind that forwards less than it
+ * receives.
+ */
 export function toFlowEdges(topology: Topology): Edge[] {
-  return topology.edges.map((edge) => ({
-    id: edgeId(edge.from, edge.to),
-    source: edge.from,
-    target: edge.to,
-  }));
+  const kindOf = new Map(topology.nodes.map((node) => [node.id, node.kind]));
+  return topology.edges.map((edge) => {
+    const kind = kindOf.get(edge.from);
+    return {
+      id: edgeId(edge.from, edge.to),
+      source: edge.from,
+      target: edge.to,
+      label: kind === undefined ? undefined : edgeContract(kind),
+      labelShowBg: true,
+    };
+  });
 }
 
 /**

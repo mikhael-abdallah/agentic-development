@@ -6,6 +6,7 @@ import { Inspector } from "@/features/inspector/Inspector";
 import { Palette } from "@/features/palette/Palette";
 import { Library } from "@/features/simulation/Library";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
+import { contractsOf } from "@/lib/describe";
 import { whyNotRemove } from "@/lib/design";
 
 export default function Home() {
@@ -30,6 +31,7 @@ export default function Home() {
         <div className="workspace__side">
           <Inspector
             node={selected}
+            wiring={contractsOf(controller.design.topology, selected?.id ?? "")}
             onChange={controller.replace}
             onRemove={controller.drop}
             cannotRemove={
