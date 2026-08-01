@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Surface } from "@/features/canvas/Surface";
 import { useDesign } from "@/features/canvas/useDesign";
+import { encodeNode } from "@/lib/clipboard";
 import { type Design, addNode, connect, emptyDesign } from "@/lib/design";
 import { KIND_MIME } from "@/lib/drag";
+import { newNode } from "@/lib/topology";
 
 const SOMEWHERE = { x: 40, y: 40 };
 
@@ -126,5 +128,18 @@ describe("Surface", () => {
   it("has somewhere to say why a connection was refused", () => {
     render(<Harness initial={chain()} />);
     expect(screen.getByRole("status")).toBeDefined();
+  });
+
+  // What copy and paste do is covered in useClipboard.test.tsx. What is only
+  // true here is that the canvas is listening at all — the wiring, which is
+  // exactly the part a hook's own tests cannot see.
+  it("pastes a component from the clipboard onto the design", () => {
+    render(<Harness initial={chain()} />);
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: { getData: () => encodeNode(newNode("cache", "cache")) },
+    });
+    fireEvent(document, event);
+    expect(screen.getByText("Cache")).toBeDefined();
   });
 });

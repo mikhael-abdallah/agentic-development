@@ -99,15 +99,22 @@ export function emptyDesign(): Design {
   };
 }
 
-/** An id no component in the design is using, derived from the kind so the
- *  first database is `database` rather than `database-1`. */
-export function uniqueId(topology: Topology, kind: NodeKind): string {
+/**
+ * An id no component in the design is using, built from `base`.
+ *
+ * The base is the kind for a component from the palette, so the first database
+ * is `database` rather than `database-1`, and the copied component's own id for
+ * a paste, so a copy of `api` is `api-2` rather than `service-2`. Either way
+ * the id says something about what it names, which is the only reason it is
+ * derived rather than counted.
+ */
+export function uniqueId(topology: Topology, base: string): string {
   const taken = new Set(topology.nodes.map((node) => node.id));
-  if (!taken.has(kind)) {
-    return kind;
+  if (!taken.has(base)) {
+    return base;
   }
   for (let n = 2; ; n++) {
-    const candidate = `${kind}-${String(n)}`;
+    const candidate = `${base}-${String(n)}`;
     if (!taken.has(candidate)) {
       return candidate;
     }
@@ -120,6 +127,59 @@ export function addNode(design: Design, kind: NodeKind, at: Position): Design {
     topology: { ...design.topology, nodes: [...design.topology.nodes, node] },
     positions: new Map(design.positions).set(node.id, at),
     selected: node.id,
+  };
+}
+
+/**
+ * A component sharing no object with the one it was made from.
+ *
+ * A spread copies the parameters by reference, so two components pasted from
+ * one original would hold the same parameters object: raising the instance
+ * count on either would raise it on both, and nothing on screen would say why.
+ *
+ * Each key named rather than looped over, because the parameter fields are a
+ * union and a loop over them would need a computed key — the one shape that
+ * type-checks against every member of a union at once, and so against none of
+ * them in particular.
+ */
+function unshared(node: DesignNode): DesignNode {
+  const copy = { ...node };
+  if (copy.loadBalancer !== undefined) {
+    copy.loadBalancer = { ...copy.loadBalancer };
+  }
+  if (copy.service !== undefined) {
+    copy.service = { ...copy.service };
+  }
+  if (copy.cache !== undefined) {
+    copy.cache = { ...copy.cache };
+  }
+  if (copy.database !== undefined) {
+    copy.database = { ...copy.database };
+  }
+  return copy;
+}
+
+/**
+ * Adds a copy of a component, settings and all.
+ *
+ * Its connections are deliberately not copied. An edge is a fact about two
+ * components, and there is no answer to which of a copy's ends should be kept:
+ * a duplicated service that arrived already wired to the same cache and behind
+ * the same balancer would be a second design decision the user did not make,
+ * and one they would have to undo before making their own. What a copy is for
+ * is the settings — the eight numbers that were tuned once — and those come
+ * over whole.
+ *
+ * It lands wherever there is room rather than on top of the original, and
+ * arrives selected, so pressing Ctrl+V twice gives two components rather than
+ * one visible box with another underneath it.
+ */
+export function pasteNode(design: Design, node: DesignNode, at: Position): Design {
+  const copy = unshared({ ...node, id: uniqueId(design.topology, node.id) });
+  return {
+    topology: { ...design.topology, nodes: [...design.topology.nodes, copy] },
+    positions: new Map(design.positions).set(copy.id, at),
+    selected: copy.id,
   };
 }
 
