@@ -8,6 +8,10 @@ import type { DesignNode } from "@/lib/topology";
 
 interface SettingsDialogProps {
   readonly node: DesignNode | undefined;
+  /** Threaded through rather than read here: the dialog knows nothing about a
+   *  workload, and the inspector needs the operation names to say when an
+   *  endpoint asks for traffic nothing sends. */
+  readonly operations: string[];
   readonly wiring: { incoming: Contract[]; outgoing: Contract[] };
   readonly open: boolean;
   readonly onChange: (node: DesignNode) => void;
@@ -41,6 +45,7 @@ interface SettingsDialogProps {
  */
 export function SettingsDialog({
   node,
+  operations,
   wiring,
   open,
   onChange,
@@ -73,7 +78,13 @@ export function SettingsDialog({
       onClose={onClose}
     >
       <div className="settings__body">
-        <Inspector node={node} wiring={wiring} onChange={onChange} onRemove={onRemove} />
+        <Inspector
+          node={node}
+          operations={operations}
+          wiring={wiring}
+          onChange={onChange}
+          onRemove={onRemove}
+        />
         <button type="button" className="settings__done" onClick={onClose}>
           Done
         </button>

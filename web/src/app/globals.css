@@ -431,6 +431,107 @@ body {
   color: var(--muted);
 }
 
+/* --- a service's api -------------------------------------------------- */
+
+.api {
+  margin: 0.9rem 0 0;
+  padding: 0;
+  border: none;
+}
+
+.api__legend {
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.api__hint {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.api__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Name, operation, cost, unit, remove — and a warning that spans the row when
+   there is one. The name takes what is left because it is the longest thing
+   anyone types here. */
+.endpoint {
+  display: grid;
+  grid-template-columns: 1fr 5.5rem 3.2rem auto auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.endpoint__name,
+.endpoint__operation,
+.endpoint__cost {
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.endpoint__name:focus-visible,
+.endpoint__operation:focus-visible,
+.endpoint__cost:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.endpoint__unit {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.endpoint__remove {
+  padding: 0 0.3rem;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.endpoint__remove:hover,
+.endpoint__remove:focus-visible {
+  color: var(--database);
+}
+
+.endpoint__unused {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.api__add {
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
 /* --- operations ------------------------------------------------------ */
 
 .operations {
