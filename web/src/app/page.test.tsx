@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import Home from "./page";
 
@@ -103,4 +103,60 @@ describe("Home", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(container.querySelector("dialog")?.open).toBe(false);
   });
+
+  // The library and the run settings are siblings, and the load is the one
+  // thing they both speak about. Loading a preset has to reach the panel, or
+  // the preset states the traffic it was written for and the run measures
+  // something else — which is what happened while the workload was held inside
+  // the panel and the library could not see it.
+  it("takes the load a preset was written for through to the run settings", async () => {
+    const preset = {
+      id: "url-shortener",
+      title: "URL shortener",
+      description: "Two operations share one path.",
+      goal: "Raise the rate.",
+      topology: {
+        nodes: [
+          { id: "client", kind: "client" },
+          { id: "api", kind: "service", service: { instances: 1, meanServiceMs: 8, queueCapacity: 500 } },
+        ],
+        edges: [{ from: "client", to: "api" }],
+      },
+      workload: {
+        rateRps: 300,
+        operations: [
+          { name: "resolve", kind: "read", share: 0.95 },
+          { name: "shorten", kind: "write", share: 0.05 },
+        ],
+        durationMs: 60_000,
+        seed: 1,
+        warmupFraction: 0.2,
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve(JSON.stringify([preset])),
+        }),
+      ),
+    );
+    render(<Home />);
+    await waitFor(() => {
+      expect(screen.getByText("URL shortener")).toBeDefined();
+    });
+    // The default load offers `read` and `write`, so finding the preset's own
+    // names is the whole assertion — and their absence beforehand is what says
+    // the fixture is not simply agreeing with the default.
+    expect(screen.queryByDisplayValue("resolve")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /URL shortener/ }));
+    expect(screen.getByDisplayValue("resolve")).toBeDefined();
+    expect(screen.getByDisplayValue("shorten")).toBeDefined();
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

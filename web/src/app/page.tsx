@@ -9,7 +9,7 @@ import { Palette } from "@/features/palette/Palette";
 import { Library } from "@/features/simulation/Library";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 import { contractsOf } from "@/lib/describe";
-import type { NodeKind } from "@/lib/topology";
+import { type NodeKind, type Workload, defaultWorkload } from "@/lib/topology";
 
 export default function Home() {
   const controller = useDesign();
@@ -17,6 +17,11 @@ export default function Home() {
   // not held here: it is whichever the design has selected, so there is one
   // answer to "what is being edited" rather than two that can disagree.
   const [editing, setEditing] = useState(false);
+  // The load, here rather than in the panel that draws it, because the library
+  // beside that panel can replace it: a preset states the traffic it was
+  // written for, and the two are siblings. Held above them both, there is one
+  // answer to what is being offered rather than two that can disagree.
+  const [workload, setWorkload] = useState<Workload>(defaultWorkload);
   const selected = controller.design.topology.nodes.find(
     (node) => node.id === controller.design.selected,
   );
@@ -45,8 +50,23 @@ export default function Home() {
           }}
         />
         <div className="workspace__side">
-          <SimulationPanel topology={controller.design.topology} />
-          <Library topology={controller.design.topology} onLoad={controller.load} />
+          <SimulationPanel
+            topology={controller.design.topology}
+            workload={workload}
+            onWorkloadChange={setWorkload}
+          />
+          <Library
+            topology={controller.design.topology}
+            onLoad={(design, offered) => {
+              controller.load(design);
+              // Only when the thing loaded came with one. A saved design is a
+              // topology and nothing else, and replacing a tuned load with a
+              // default nobody asked for would be the same defect in reverse.
+              if (offered !== undefined) {
+                setWorkload(offered);
+              }
+            }}
+          />
         </div>
       </div>
       <SettingsDialog

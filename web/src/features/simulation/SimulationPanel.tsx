@@ -8,10 +8,20 @@ import { Results } from "@/features/simulation/Results";
 import { type SimulationResult, simulate } from "@/features/simulation/client";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
 import { whyNotOffer, whyNotRun } from "@/lib/design";
-import { type Topology, type Workload, defaultWorkload } from "@/lib/topology";
+import type { Topology, Workload } from "@/lib/topology";
 
 interface SimulationPanelProps {
   readonly topology: Topology;
+  /**
+   * Held by the page rather than here, because the library can replace it.
+   *
+   * Loading a preset brings the traffic that preset was written for, and the
+   * library and this panel are siblings — so the one thing they both speak
+   * about lives above them both. Keeping a copy here would mean a preset's
+   * operations were on screen in one panel and ignored by the other.
+   */
+  readonly workload: Workload;
+  readonly onWorkloadChange: (workload: Workload) => void;
 }
 
 /** What the panel is doing. A single value rather than a pair of booleans,
@@ -23,8 +33,11 @@ type Run =
   | { status: "done"; result: SimulationResult }
   | { status: "failed"; reason: string };
 
-export function SimulationPanel({ topology }: SimulationPanelProps) {
-  const [workload, setWorkload] = useState<Workload>(defaultWorkload);
+export function SimulationPanel({
+  topology,
+  workload,
+  onWorkloadChange,
+}: SimulationPanelProps) {
   const [run, setRun] = useState<Run>({ status: "idle" });
   // What stops this design being run at all, asked before the button rather
   // than discovered by pressing it. The engine checks the same things and more
@@ -56,11 +69,11 @@ export function SimulationPanel({ topology }: SimulationPanelProps) {
           tells them apart. */}
       <p className="panel__scope">Whole design</p>
       <h2 className="panel__title">The load to put through it</h2>
-      <Numbers subject={workload} fields={WORKLOAD_FIELDS} onChange={setWorkload} />
+      <Numbers subject={workload} fields={WORKLOAD_FIELDS} onChange={onWorkloadChange} />
       <Operations
         operations={workload.operations}
         onChange={(operations) => {
-          setWorkload({ ...workload, operations });
+          onWorkloadChange({ ...workload, operations });
         }}
       />
       <button
