@@ -51,10 +51,11 @@ export const WORKLOAD_FIELDS: NumberField<Workload>[] = [
   },
   {
     label: "Seed",
-    // The old wording assumed you already knew what a seed was, which is
-    // exactly the reader who does not need the hint. This one says what is
-    // random, what the number does to it, and what to do with that.
-    hint: "Requests do not arrive on a metronome and no two take the same time to serve; the simulator draws both at random. The seed picks which random numbers it draws, so the same design and load with the same seed give exactly the same answer — and changing only the seed shows how much of that answer was luck.",
+    // Two rewrites of this hint failed to make the seed make sense, which is
+    // what "How much of that was luck" under the results is for: every run is
+    // run at five consecutive seeds and the range is printed. This says what
+    // the number is and points at the thing that shows it.
+    hint: "Requests do not arrive on a metronome and no two take the same time to serve; the simulator draws both at random, and this picks which random numbers it draws. Same design, same load, same seed: exactly the same answer, every time. Every run also runs the four seeds after this one, and the range under the results is how much of the answer was luck.",
     unit: "",
     min: 0,
     max: Number.MAX_SAFE_INTEGER,
