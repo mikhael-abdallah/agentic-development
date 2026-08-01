@@ -14,8 +14,11 @@ import {
   whyNotCall,
   PARAMS_KEY,
   PARAM_FIELDS,
+  COLUMN_FIELDS,
   ENDPOINT_FIELDS,
   OMITTED_WHEN_EMPTY,
+  QUERY_FIELDS,
+  TABLE_FIELDS,
   OPERATION_FIELDS,
   OPERATION_KINDS,
   SCENARIO_FIELDS,
@@ -205,6 +208,41 @@ describe("the mirrored contract", () => {
   // held to the same standard as every other, or "optional" would quietly mean
   // "unchecked" — and `endpoints` is a list of objects, which is exactly the
   // shape a top-level key comparison cannot see inside.
+  // The schema is three levels of nested objects that the parameter check
+  // above cannot see inside, and the engine decodes every one of them with
+  // unknown fields refused. Each level is walked here the way edges and
+  // operations are.
+  it("names the same fields inside the schema it describes", () => {
+    const tables = presetNodes().flatMap((node) => {
+      const database = node.database as { tables?: UnknownRecord[] } | undefined;
+      return database?.tables ?? [];
+    });
+    expect(tables.length).toBeGreaterThan(0);
+    expect(tables.map(sortedKeys)).toEqual(tables.map(() => sortedKeys(TABLE_FIELDS)));
+
+    const columns = tables.flatMap((table) => (table.columns as unknown[] | undefined) ?? []);
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns.map(sortedKeys)).toEqual(columns.map(() => sortedKeys(COLUMN_FIELDS)));
+  });
+
+  it("names the same fields inside a query it describes", () => {
+    const queries = presetNodes().flatMap((node) => {
+      const database = node.database as { queries?: unknown[] } | undefined;
+      return database?.queries ?? [];
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    expect(queries.map(sortedKeys)).toEqual(queries.map(() => sortedKeys(QUERY_FIELDS)));
+  });
+
+  // Every connection in the preset names a transport, so the optional-field
+  // allowance in the edge check above is not what is carrying this: the key is
+  // there and compared like any other.
+  it("knows the transport every connection names", () => {
+    const edges = (readPreset().topology as { edges: { transport?: string }[] }).edges;
+    expect(edges.length).toBeGreaterThan(0);
+    expect(edges.map((edge) => typeof edge.transport)).toEqual(edges.map(() => "string"));
+  });
+
   it("names the same fields inside an endpoint it describes", () => {
     const endpoints = presetNodes().flatMap((node) => {
       const service = node.service as { endpoints?: unknown[] } | undefined;

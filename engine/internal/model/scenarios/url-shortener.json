@@ -2,7 +2,7 @@
   "id": "url-shortener",
   "title": "URL shortener",
   "description": "Two operations share one path. Nineteen requests in twenty are a resolve — someone following a short link, which only has to read the code back — and the twentieth is a shorten, which has to write one. That ratio is why a cache in front of the database decides how much load the database ever sees, and why the service pool decides how much concurrency there is to go around.",
-  "goal": "Raise rateRps toward 500 and watch p99 pull away from the mean long before anything is dropped — that gap is the queue forming. Then put the cache hit ratio back down to 0.2 and run it again: the database stops being an afterthought and becomes the bottleneck, without a single parameter of the database itself changing.",
+  "goal": "Three things to try, in order. Raise rateRps toward 500: p99 pulls away from the mean long before anything is dropped, and that gap is the queue forming. Put the cache hit ratio down to 0.2: the database becomes the bottleneck without one of its own parameters changing. Then open the key store and untick indexed on the code column: the same query that read one row now reads all fifty million, and the design does not slow down so much as stop. That last one is why the row count is written down.",
   "topology": {
     "nodes": [
       {"id": "client", "kind": "client", "label": "Browsers"},
@@ -36,14 +36,34 @@
         "id": "db",
         "kind": "database",
         "label": "Key store",
-        "database": {"replicas": 1, "meanReadMs": 12, "meanWriteMs": 30, "poolSize": 2}
+        "database": {
+          "replicas": 1,
+          "meanReadMs": 12,
+          "meanWriteMs": 30,
+          "poolSize": 2,
+          "scanPerMillionRowsMs": 8,
+          "tables": [
+            {
+              "name": "links",
+              "rows": 50000000,
+              "columns": [
+                {"name": "code", "indexed": true},
+                {"name": "target", "indexed": false}
+              ]
+            }
+          ],
+          "queries": [
+            {"operation": "resolve", "table": "links", "by": "code", "rowsMatched": 1},
+            {"operation": "shorten", "table": "links", "by": "code", "rowsMatched": 1}
+          ]
+        }
       }
     ],
     "edges": [
-      {"from": "client", "to": "lb"},
-      {"from": "lb", "to": "api"},
-      {"from": "api", "to": "cache"},
-      {"from": "cache", "to": "db"}
+      {"from": "client", "to": "lb", "transport": "HTTPS"},
+      {"from": "lb", "to": "api", "transport": "HTTP/1.1"},
+      {"from": "api", "to": "cache", "transport": "RESP"},
+      {"from": "cache", "to": "db", "transport": "PostgreSQL wire"}
     ]
   },
   "workload": {

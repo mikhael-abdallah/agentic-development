@@ -403,15 +403,16 @@ export const ENDPOINT_FIELDS = {
   meanServiceMs: true,
 } satisfies Fields<Endpoint>;
 
-// There are deliberately no TABLE_FIELDS, COLUMN_FIELDS or QUERY_FIELDS here
-// yet. The field maps exist so `topology.test.ts` can walk the engine's own
-// embedded preset and compare key sets against it — and no preset declares a
-// schema, so those maps would be exported for a test that compared an empty
-// list against an empty list. They arrive with the preset that uses them.
-//
-// The decode path is not unguarded in the meantime: `clipboard.test.ts` holds a
-// fixture carrying every field of every kind, schema included, and round-trips
-// it.
+export const TABLE_FIELDS = { name: true, rows: true, columns: true } satisfies Fields<Table>;
+
+export const COLUMN_FIELDS = { name: true, indexed: true } satisfies Fields<Column>;
+
+export const QUERY_FIELDS = {
+  operation: true,
+  table: true,
+  by: true,
+  rowsMatched: true,
+} satisfies Fields<Query>;
 
 export const EDGE_FIELDS = {
   from: true,
