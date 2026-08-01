@@ -397,3 +397,135 @@ func TestAnEndpointLongerThanTheClockIsRefused(t *testing.T) {
 		t.Errorf("Validate() on an endpoint of 1e300 ms = %v, want ErrParamRange", err)
 	}
 }
+
+// stores is the smallest design carrying a database with the schema given, so
+// a case below says only what is wrong with the schema.
+func stores(p model.DatabaseParams) model.Topology {
+	if p.Replicas == 0 && p.MeanRead == 0 {
+		p.MeanRead, p.MeanWrite, p.PoolSize = 1, 1, 1
+	}
+	return model.Topology{
+		Nodes: []model.Node{
+			{ID: "client", Kind: model.KindClient},
+			{
+				ID: "svc", Kind: model.KindService,
+				Service: &model.ServiceParams{Instances: 1, MeanService: 1},
+			},
+			{ID: "db", Kind: model.KindDatabase, Database: &p},
+		},
+		Edges: []model.Edge{{From: "client", To: "svc"}, {From: "svc", To: "db"}},
+	}
+}
+
+// linkTable is a table of links, indexed by the code and not by the target.
+func linkTable() model.Table {
+	return model.Table{
+		Name: "links", Rows: 1000,
+		Columns: []model.Column{{Name: "code", Indexed: true}, {Name: "target"}},
+	}
+}
+
+func TestADatabaseMayDescribeItsSchema(t *testing.T) {
+	t.Parallel()
+	design := stores(model.DatabaseParams{
+		MeanRead: 1, MeanWrite: 1, PoolSize: 1,
+		Tables:             []model.Table{linkTable()},
+		Queries:            []model.Query{{Operation: "resolve", Table: "links", By: "code", RowsMatched: 1}},
+		ScanPerMillionRows: 20,
+	})
+	if err := design.Validate(); err != nil {
+		t.Errorf("Validate() on a described schema = %v, want nil", err)
+	}
+}
+
+// The point of the shape: a database that says nothing about its schema is
+// exactly the database it was before schemas existed.
+func TestADatabaseNeedNotDescribeItsSchema(t *testing.T) {
+	t.Parallel()
+	design := stores(model.DatabaseParams{MeanRead: 1, MeanWrite: 1, PoolSize: 1})
+	if err := design.Validate(); err != nil {
+		t.Errorf("Validate() on a database with no schema = %v, want nil", err)
+	}
+}
+
+func TestABrokenSchemaIsRefused(t *testing.T) {
+	t.Parallel()
+	whole := model.DatabaseParams{
+		MeanRead: 1, MeanWrite: 1, PoolSize: 1,
+		Tables:             []model.Table{linkTable()},
+		Queries:            []model.Query{{Operation: "resolve", Table: "links", By: "code", RowsMatched: 1}},
+		ScanPerMillionRows: 20,
+	}
+	broken := func(change func(*model.DatabaseParams)) model.Topology {
+		p := whole
+		p.Tables = append([]model.Table(nil), whole.Tables...)
+		p.Queries = append([]model.Query(nil), whole.Queries...)
+		change(&p)
+		return stores(p)
+	}
+	tests := []struct {
+		name   string
+		design model.Topology
+	}{
+		// Converting rows into time needs a number, and any this engine chose
+		// would be invented. It is required once there is a schema and asked
+		// for nowhere else.
+		{"a schema with no scan rate", broken(func(p *model.DatabaseParams) {
+			p.ScanPerMillionRows = 0
+		})},
+		{"queries with no tables to read", broken(func(p *model.DatabaseParams) {
+			p.Tables = nil
+		})},
+		{"a table with no name", broken(func(p *model.DatabaseParams) {
+			p.Tables[0].Name = ""
+		})},
+		{"two tables of one name", broken(func(p *model.DatabaseParams) {
+			p.Tables = append(p.Tables, linkTable())
+		})},
+		// A table nothing is in costs the same scanned or looked up, which is
+		// the one thing a schema exists to tell apart.
+		{"a table with no rows", broken(func(p *model.DatabaseParams) {
+			p.Tables[0].Rows = 0
+		})},
+		{"a table with no columns", broken(func(p *model.DatabaseParams) {
+			p.Tables[0].Columns = nil
+		})},
+		{"a column with no name", broken(func(p *model.DatabaseParams) {
+			p.Tables[0].Columns = []model.Column{{Name: ""}}
+		})},
+		{"two columns of one name", broken(func(p *model.DatabaseParams) {
+			p.Tables[0].Columns = []model.Column{{Name: "code"}, {Name: "code", Indexed: true}}
+		})},
+		{"a query serving no operation", broken(func(p *model.DatabaseParams) {
+			p.Queries[0].Operation = ""
+		})},
+		{"two queries serving one operation", broken(func(p *model.DatabaseParams) {
+			p.Queries = append(p.Queries, model.Query{
+				Operation: "resolve", Table: "links", By: "target", RowsMatched: 5,
+			})
+		})},
+		{"a query against a table that is not there", broken(func(p *model.DatabaseParams) {
+			p.Queries[0].Table = "visits"
+		})},
+		{"a query by a column that is not there", broken(func(p *model.DatabaseParams) {
+			p.Queries[0].By = "slug"
+		})},
+		{"a query matching no rows", broken(func(p *model.DatabaseParams) {
+			p.Queries[0].RowsMatched = 0
+		})},
+		// Allowing it would make an indexed lookup cost more than the scan it
+		// is supposed to avoid, and the design would report an index as a
+		// pessimisation.
+		{"a query matching more rows than the table holds", broken(func(p *model.DatabaseParams) {
+			p.Queries[0].RowsMatched = 5000
+		})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tt.design.Validate(); !errors.Is(err, model.ErrParamRange) {
+				t.Errorf("Validate() with %s = %v, want ErrParamRange", tt.name, err)
+			}
+		})
+	}
+}

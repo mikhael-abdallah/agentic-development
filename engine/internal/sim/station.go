@@ -43,6 +43,15 @@ type station struct {
 	// the mean is. That is what lets an endpoint be added to a design without
 	// shifting a single draw anywhere else in the run.
 	perCall map[string]time.Duration
+	// rowCost is what the rows one operation reads cost here, added to hold
+	// rather than replacing it. A query's rows are what it costs *on top of*
+	// answering anything at all, where an endpoint's time is the whole of what
+	// a call costs — so the two compose differently, and sharing one field
+	// would mean it meant one thing for a service and another for a database.
+	//
+	// Empty for everything without a schema, which is every kind but a
+	// database and every database that has not described one.
+	rowCost map[string]time.Duration
 	sampled bool
 
 	// slots[i] is how many requests server i is holding, and pool how many it
@@ -212,11 +221,38 @@ func newDatabase(n model.Node, downstream []string) (*station, error) {
 		next:      downstream,
 		hold:      n.Database.MeanRead.Duration(),
 		holdWrite: n.Database.MeanWrite.Duration(),
+		rowCost:   rowCosts(*n.Database),
 		sampled:   true,
 		slots:     make([]int, 1+n.Database.Replicas),
 		busy:      make([]time.Duration, 1+n.Database.Replicas),
 		pool:      n.Database.PoolSize,
 	}, nil
+}
+
+// rowCosts works out what the rows each query reads cost, by operation.
+//
+// Computed once here rather than per request, because none of it moves during
+// a run: the schema is fixed, so the rows a query reads are fixed, and the
+// only thing left to decide at request time is which operation arrived.
+//
+// Nil for a database with no schema, and a nil map reads as zero — so a design
+// that declares no tables adds nothing to anything and behaves exactly as it
+// did before schemas existed.
+func rowCosts(p model.DatabaseParams) map[string]time.Duration {
+	if len(p.Queries) == 0 {
+		return nil
+	}
+	tables := make(map[string]model.Table, len(p.Tables))
+	for _, t := range p.Tables {
+		tables[t.Name] = t
+	}
+	costs := make(map[string]time.Duration, len(p.Queries))
+	for _, q := range p.Queries {
+		rows := q.RowsRead(tables[q.Table])
+		perMillion := float64(p.ScanPerMillionRows)
+		costs[q.Operation] = model.Millis(float64(rows) / 1e6 * perMillion).Duration()
+	}
+	return costs
 }
 
 // seat picks which of the component's servers takes the request, or -1 when

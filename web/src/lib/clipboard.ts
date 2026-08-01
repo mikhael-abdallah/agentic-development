@@ -25,13 +25,16 @@
 import {
   ALGORITHMS,
   type CacheParams,
+  type Column,
   type DatabaseParams,
   type DesignNode,
   type Endpoint,
   type LoadBalancerParams,
   NODE_KINDS,
+  type Query,
   type NodeKind,
   type ServiceParams,
+  type Table,
   WRITE_POLICIES,
 } from "@/lib/topology";
 
@@ -130,33 +133,38 @@ function endpointOf(value: unknown): Endpoint | null {
 }
 
 /**
- * The API on a pasted service, or null if what is there is not one.
+ * An optional list of things, each read by `read`.
  *
- * Absent and empty are both "this service does not describe its API", and both
- * come back as undefined rather than as an empty list — so a copy of a service
+ * Absent and empty are both "this component does not describe that", and both
+ * come back with no items rather than as an empty list — so a copy of a service
  * without an API is equal to the service it came from rather than merely
  * equivalent to it, which is what a round-trip test can check.
  *
  * A malformed entry refuses the whole paste rather than being skipped. Half an
- * API is a component whose costs are not the ones that were copied, and this
- * file's rule is that a component only comes back if all of it does.
+ * API, or half a schema, is a component whose costs are not the ones that were
+ * copied, and this file's rule is that a component comes back only if all of it
+ * does. Three fields distinguish "there was nothing" from "it was wrong", which
+ * a bare `T[] | null` could not.
  */
-function endpointsOf(value: unknown): { ok: true; endpoints?: Endpoint[] } | { ok: false } {
+function listOf<T>(
+  value: unknown,
+  read: (entry: unknown) => T | null,
+): { ok: true; items?: T[] } | { ok: false } {
   if (value === undefined) {
     return { ok: true };
   }
   if (!Array.isArray(value)) {
     return { ok: false };
   }
-  const endpoints: Endpoint[] = [];
+  const items: T[] = [];
   for (const entry of value) {
-    const endpoint = endpointOf(entry);
-    if (endpoint === null) {
+    const item = read(entry);
+    if (item === null) {
       return { ok: false };
     }
-    endpoints.push(endpoint);
+    items.push(item);
   }
-  return endpoints.length === 0 ? { ok: true } : { ok: true, endpoints };
+  return items.length === 0 ? { ok: true } : { ok: true, items };
 }
 
 function serviceOf(value: unknown): ServiceParams | null {
@@ -167,12 +175,12 @@ function serviceOf(value: unknown): ServiceParams | null {
   const instances = numberOf(fields.get("instances"));
   const meanServiceMs = numberOf(fields.get("meanServiceMs"));
   const queueCapacity = numberOf(fields.get("queueCapacity"));
-  const api = endpointsOf(fields.get("endpoints"));
+  const api = listOf(fields.get("endpoints"), endpointOf);
   if (instances === null || meanServiceMs === null || queueCapacity === null || !api.ok) {
     return null;
   }
   const service: ServiceParams = { instances, meanServiceMs, queueCapacity };
-  return api.endpoints === undefined ? service : { ...service, endpoints: api.endpoints };
+  return api.items === undefined ? service : { ...service, endpoints: api.items };
 }
 
 function cacheOf(value: unknown): CacheParams | null {
@@ -189,6 +197,74 @@ function cacheOf(value: unknown): CacheParams | null {
   return { hitRatio, hitLatencyMs, writePolicy };
 }
 
+function columnOf(value: unknown): Column | null {
+  const fields = fieldsOf(value);
+  if (fields === null) {
+    return null;
+  }
+  const name = nameOf(fields.get("name"));
+  const indexed = fields.get("indexed");
+  if (name === null || typeof indexed !== "boolean") {
+    return null;
+  }
+  return { name, indexed };
+}
+
+function tableOf(value: unknown): Table | null {
+  const fields = fieldsOf(value);
+  if (fields === null) {
+    return null;
+  }
+  const name = nameOf(fields.get("name"));
+  const rows = numberOf(fields.get("rows"));
+  const columns = listOf(fields.get("columns"), columnOf);
+  if (name === null || rows === null || !columns.ok || columns.items === undefined) {
+    return null;
+  }
+  return { name, rows, columns: columns.items };
+}
+
+function queryOf(value: unknown): Query | null {
+  const fields = fieldsOf(value);
+  if (fields === null) {
+    return null;
+  }
+  const operation = nameOf(fields.get("operation"));
+  const table = nameOf(fields.get("table"));
+  const by = nameOf(fields.get("by"));
+  const rowsMatched = numberOf(fields.get("rowsMatched"));
+  if (operation === null || table === null || by === null || rowsMatched === null) {
+    return null;
+  }
+  return { operation, table, by, rowsMatched };
+}
+
+/**
+ * The optional half of a database: its tables, its queries and its scan rate.
+ *
+ * Separate from `databaseOf` because the two halves fail differently — the
+ * required parameters are four numbers that must be there, and these are three
+ * things that may be absent and must be whole if they are not.
+ *
+ * Each key is spread in only when it has a value, rather than assigned
+ * undefined. A key present and holding undefined is not the same object as a
+ * key absent, and the round trip this file is checked by compares them.
+ */
+function schemaOf(fields: Map<string, unknown>): Partial<DatabaseParams> | null {
+  const tables = listOf(fields.get("tables"), tableOf);
+  const queries = listOf(fields.get("queries"), queryOf);
+  const scan = fields.get("scanPerMillionRowsMs");
+  const scanPerMillionRowsMs = scan === undefined ? undefined : numberOf(scan);
+  if (!tables.ok || !queries.ok || scanPerMillionRowsMs === null) {
+    return null;
+  }
+  return {
+    ...(tables.items === undefined ? {} : { tables: tables.items }),
+    ...(queries.items === undefined ? {} : { queries: queries.items }),
+    ...(scanPerMillionRowsMs === undefined ? {} : { scanPerMillionRowsMs }),
+  };
+}
+
 function databaseOf(value: unknown): DatabaseParams | null {
   const fields = fieldsOf(value);
   if (fields === null) {
@@ -198,10 +274,17 @@ function databaseOf(value: unknown): DatabaseParams | null {
   const meanReadMs = numberOf(fields.get("meanReadMs"));
   const meanWriteMs = numberOf(fields.get("meanWriteMs"));
   const poolSize = numberOf(fields.get("poolSize"));
-  if (replicas === null || meanReadMs === null || meanWriteMs === null || poolSize === null) {
+  const schema = schemaOf(fields);
+  if (
+    replicas === null ||
+    meanReadMs === null ||
+    meanWriteMs === null ||
+    poolSize === null ||
+    schema === null
+  ) {
     return null;
   }
-  return { replicas, meanReadMs, meanWriteMs, poolSize };
+  return { replicas, meanReadMs, meanWriteMs, poolSize, ...schema };
 }
 
 /**

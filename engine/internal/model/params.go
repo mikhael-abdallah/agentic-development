@@ -179,6 +179,58 @@ func (p CacheParams) validate() error {
 	return representable("hitLatencyMs", float64(p.HitLatency))
 }
 
+// Column is one field of a table, and whether it can be looked up by.
+//
+// Indexed is the whole of it, because indexed or not is the whole of what this
+// model can act on. A type, a width, a nullability constraint change what a
+// row costs to store and nothing about what a query costs to answer, and a
+// field that moved no number would be decoration.
+type Column struct {
+	Name    string `json:"name"`
+	Indexed bool   `json:"indexed"`
+}
+
+// Table is what a database holds, and how much of it.
+//
+// Rows is the load-bearing number. A query that can use an index reads the
+// rows it matches; one that cannot reads the table — so the size of the table
+// is what turns a missing index from a detail into an outage, and it has to be
+// stated for that to be visible.
+type Table struct {
+	Name    string   `json:"name"`
+	Rows    int      `json:"rows"`
+	Columns []Column `json:"columns"`
+}
+
+// indexed reports whether this table can look rows up by the named column.
+func (t Table) indexed(column string) bool {
+	for _, c := range t.Columns {
+		if c.Name == column {
+			return c.Indexed
+		}
+	}
+	return false
+}
+
+// Query is what one operation asks of a table.
+//
+// The point of the whole schema, in four fields: an operation, a table, the
+// column it looks rows up by, and how many rows it expects back. Whether that
+// column carries an index is the difference between reading RowsMatched rows
+// and reading the table, which on a table of any size is the difference
+// between a query and an outage.
+type Query struct {
+	// Operation names an operation in the workload, the same link an
+	// Endpoint uses. One this run does not offer never fires.
+	Operation string `json:"operation"`
+	Table     string `json:"table"`
+	// By is the column rows are found by. Unindexed means a scan.
+	By string `json:"by"`
+	// RowsMatched is how many rows the query returns or changes. It is what
+	// an index buys: without one the query reads the table regardless.
+	RowsMatched int `json:"rowsMatched"`
+}
+
 // DatabaseParams configures a primary with optional read replicas.
 type DatabaseParams struct {
 	// Replicas serve reads alongside the primary. Zero means the primary
@@ -186,11 +238,30 @@ type DatabaseParams struct {
 	Replicas int `json:"replicas"`
 	// MeanRead and MeanWrite are separate because they usually are: a write
 	// that fsyncs and replicates is not a read that hits a warm page.
+	//
+	// What every query costs before its rows are counted — the fixed part of
+	// answering anything at all. A query below adds the cost of the rows it
+	// actually has to read.
 	MeanRead  Millis `json:"meanReadMs"`
 	MeanWrite Millis `json:"meanWriteMs"`
 	// PoolSize is the concurrent requests one server will handle. It is the
 	// cap that turns a fast database into a queue.
 	PoolSize int `json:"poolSize"`
+	// Tables and Queries are the schema, and are optional together. A
+	// database that declares neither costs its means for everything, which is
+	// what every database did before a schema could be written — so adding one
+	// can never invalidate a design that already ran.
+	Tables  []Table `json:"tables,omitempty"`
+	Queries []Query `json:"queries,omitempty"`
+	// ScanPerMillionRows is what reading a million rows costs this store.
+	//
+	// Required once there are tables, and deliberately not given a default.
+	// Converting rows into milliseconds needs a number, and any number this
+	// engine chose would be invented — a plausible-looking constant behind a
+	// figure the user would then reason about. Someone declaring a table of
+	// fifty million rows knows roughly what a scan costs them, or is guessing
+	// either way; this makes the guess theirs and visible.
+	ScanPerMillionRows Millis `json:"scanPerMillionRowsMs,omitempty"`
 }
 
 func (p DatabaseParams) validate() error {
@@ -209,7 +280,10 @@ func (p DatabaseParams) validate() error {
 	if err := representable("meanWriteMs", float64(p.MeanWrite)); err != nil {
 		return err
 	}
-	return atLeastInt("poolSize", p.PoolSize, 1)
+	if err := atLeastInt("poolSize", p.PoolSize, 1); err != nil {
+		return err
+	}
+	return p.validateSchema()
 }
 
 // Two rules, and the difference between them matters.
