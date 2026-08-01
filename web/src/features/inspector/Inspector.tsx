@@ -2,10 +2,12 @@
 
 import { Numbers, Row } from "@/components/Field";
 import { Api } from "@/features/inspector/Api";
+import { Schema } from "@/features/inspector/Schema";
 import {
   CACHE_FIELDS,
   DATABASE_FIELDS,
   LOAD_BALANCER_FIELDS,
+  SCAN_FIELDS,
   SERVICE_FIELDS,
 } from "@/features/inspector/fields";
 import {
@@ -20,13 +22,64 @@ import {
   ALGORITHMS,
   type Algorithm,
   type CacheParams,
+  type DatabaseParams,
   type DesignNode,
   type Endpoint,
   type LoadBalancerParams,
+  type Query,
   type ServiceParams,
+  type Table,
   WRITE_POLICIES,
   type WritePolicy,
 } from "@/lib/topology";
+
+interface StoreProps {
+  readonly params: DatabaseParams;
+  readonly operations: string[];
+  readonly onParams: (params: DatabaseParams) => void;
+}
+
+/**
+ * A store, and the schema it answers from.
+ *
+ * The scan rate appears only once there is a schema, because it is only then
+ * that there are rows to convert into time. Asking for it on every database
+ * would be asking for a number for an arithmetic nobody had requested — and it
+ * deliberately has no default, so a blank one is a design the engine refuses
+ * rather than a design carrying a plausible figure this app invented.
+ *
+ * Emptying the schema takes all three keys with it, for the same reason
+ * emptying a service's API takes its key: absent and empty read the same to the
+ * engine and the clipboard, so leaving them behind would make a copy that is
+ * not equal to what was copied while behaving identically.
+ */
+function Store({ params, operations, onParams }: StoreProps) {
+  const setSchema = (schema: { tables: Table[]; queries: Query[] }) => {
+    if (schema.tables.length === 0 && schema.queries.length === 0) {
+      onParams({
+        replicas: params.replicas,
+        meanReadMs: params.meanReadMs,
+        meanWriteMs: params.meanWriteMs,
+        poolSize: params.poolSize,
+      });
+      return;
+    }
+    onParams({ ...params, ...schema, scanPerMillionRowsMs: params.scanPerMillionRowsMs ?? 0 });
+  };
+  const described = (params.tables ?? []).length > 0 || (params.queries ?? []).length > 0;
+  return (
+    <>
+      <Numbers subject={params} fields={DATABASE_FIELDS} onChange={onParams} />
+      {described ? <Numbers subject={params} fields={SCAN_FIELDS} onChange={onParams} /> : null}
+      <Schema
+        tables={params.tables ?? []}
+        queries={params.queries ?? []}
+        operations={operations}
+        onChange={setSchema}
+      />
+    </>
+  );
+}
 
 interface ServiceProps {
   readonly params: ServiceParams;
@@ -204,10 +257,10 @@ function Params({ node, operations, onChange }: ParamsProps) {
       );
     case "database":
       return node.database === undefined ? null : (
-        <Numbers
-          subject={node.database}
-          fields={DATABASE_FIELDS}
-          onChange={(database) => {
+        <Store
+          params={node.database}
+          operations={operations}
+          onParams={(database) => {
             onChange({ ...node, database });
           }}
         />

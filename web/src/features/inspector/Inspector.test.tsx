@@ -292,4 +292,130 @@ describe("Inspector choosing how writes go past a cache", () => {
     const [changed] = onChange.mock.calls[0] as [DesignNode];
     expect(changed.service).not.toHaveProperty("endpoints");
   });
+
+  // A store shows no scan rate until it has a schema. Converting rows into
+  // milliseconds is an arithmetic that only exists once there are rows, and a
+  // box asking for a number nothing would use invites a wrong answer.
+  it("asks for a scan rate only once the database has a schema", () => {
+    const plain = newNode("database", "db");
+    const { unmount } = render(
+      <Inspector
+        node={plain}
+        operations={OPERATIONS}
+        wiring={NO_WIRING}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText(/Scan rate/)).toBeNull();
+    unmount();
+
+    const described: DesignNode = {
+      ...plain,
+      database: {
+        replicas: 0,
+        meanReadMs: 1,
+        meanWriteMs: 1,
+        poolSize: 1,
+        tables: [{ name: "links", rows: 10, columns: [{ name: "code", indexed: true }] }],
+        queries: [],
+        scanPerMillionRowsMs: 20,
+      },
+    };
+    render(
+      <Inspector
+        node={described}
+        operations={OPERATIONS}
+        wiring={NO_WIRING}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText(/Scan rate/)).toBeDefined();
+  });
+
+  // Emptying the schema takes all three keys with it, the same rule an emptied
+  // API follows: absent and empty read the same to the engine and to the
+  // clipboard, so leaving them behind would make a copy that is not equal to
+  // what was copied while behaving identically.
+  it("takes the schema keys with the last table rather than leaving empty lists", () => {
+    const onChange = vi.fn();
+    const described: DesignNode = {
+      ...newNode("database", "db"),
+      database: {
+        replicas: 0,
+        meanReadMs: 1,
+        meanWriteMs: 1,
+        poolSize: 1,
+        tables: [{ name: "links", rows: 10, columns: [{ name: "code", indexed: true }] }],
+        queries: [],
+        scanPerMillionRowsMs: 20,
+      },
+    };
+    render(
+      <Inspector
+        node={described}
+        operations={OPERATIONS}
+        wiring={NO_WIRING}
+        onChange={onChange}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove links" }));
+    const [changed] = onChange.mock.calls[0] as [DesignNode];
+    expect(changed.database).toEqual({
+      replicas: 0,
+      meanReadMs: 1,
+      meanWriteMs: 1,
+      poolSize: 1,
+    });
+    for (const key of ["tables", "queries", "scanPerMillionRowsMs"]) {
+      expect(changed.database).not.toHaveProperty(key);
+    }
+  });
+
+  // Editing a schema that is already there, and the scan rate beside it.
+  it("edits a schema and the rate its scans are charged at", () => {
+    const onChange = vi.fn();
+    const described: DesignNode = {
+      ...newNode("database", "db"),
+      database: {
+        replicas: 0,
+        meanReadMs: 1,
+        meanWriteMs: 1,
+        poolSize: 1,
+        tables: [{ name: "links", rows: 10, columns: [{ name: "code", indexed: true }] }],
+        queries: [],
+        scanPerMillionRowsMs: 20,
+      },
+    };
+    const { rerender } = render(
+      <Inspector
+        node={described}
+        operations={OPERATIONS}
+        wiring={NO_WIRING}
+        onChange={onChange}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Scan rate/), { target: { value: "45" } });
+    const [rated] = onChange.mock.calls[0] as [DesignNode];
+    expect(rated.database?.scanPerMillionRowsMs).toBe(45);
+
+    onChange.mockClear();
+    rerender(
+      <Inspector
+        node={described}
+        operations={OPERATIONS}
+        wiring={NO_WIRING}
+        onChange={onChange}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add a query" }));
+    const [queried] = onChange.mock.calls[0] as [DesignNode];
+    expect(queried.database?.queries).toHaveLength(1);
+    // Still carried, because the schema did not go away.
+    expect(queried.database?.scanPerMillionRowsMs).toBe(20);
+  });
 });

@@ -117,3 +117,25 @@ export const DATABASE_FIELDS: NumberField<DatabaseParams>[] = [
     set: (params, value) => ({ ...params, poolSize: value }),
   },
 ];
+
+/**
+ * The scan rate, on its own because it applies only to a database that has a
+ * schema.
+ *
+ * Kept out of DATABASE_FIELDS rather than added to it, so that a store with no
+ * tables shows no box for it. Converting rows into milliseconds is an
+ * arithmetic that only exists once there are rows, and a field asking for a
+ * number nothing would use is a field that invites a wrong answer.
+ */
+export const SCAN_FIELDS: NumberField<DatabaseParams>[] = [
+  {
+    label: "Scan rate",
+    hint: "What reading a million rows costs this store. There is deliberately no default: any number chosen here would be one this app invented, and every figure the run reports would then rest on it. A query on an indexed column reads the rows it matched; one without an index reads the whole table at this rate.",
+    unit: "ms per million rows",
+    min: 0,
+    max: 600_000,
+    step: 1,
+    get: (params) => params.scanPerMillionRowsMs ?? 0,
+    set: (params, value) => ({ ...params, scanPerMillionRowsMs: value }),
+  },
+];
