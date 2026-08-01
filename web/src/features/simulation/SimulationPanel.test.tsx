@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
+import { SEEDS } from "@/features/simulation/spread";
 import { addNode, connect, emptyDesign } from "@/lib/design";
 import { type Topology, type Workload, defaultWorkload } from "@/lib/topology";
 
@@ -85,14 +86,52 @@ describe("SimulationPanel", () => {
 
   it("reports what the run said", async () => {
     answers(200, BODY);
+    const { container } = panel();
+    fireEvent.click(screen.getByRole("button", { name: /Run simulation/ }));
+    await waitFor(() => {
+      expect(container.querySelector(".results__headline")).not.toBeNull();
+    });
+    // Scoped to the block each figure belongs to, because the spread beneath
+    // them names the same numbers as the ends of a range: an unscoped query
+    // for "200 req/s" or "20 ms" now matches twice, and one that matched the
+    // spread alone would go on passing while the headline showed nothing.
+    const textOf = (selector: string) => container.querySelector(selector)?.textContent ?? "";
+    expect(textOf(".results__headline")).toContain("200 req/s");
+    expect(textOf(".results__latency")).toContain("20 ms");
+    expect(textOf(".results__nodes")).toContain("api");
+    expect(textOf(".results__nodes")).toContain("60%");
+  });
+
+  // The point of the spread, and the reason a run is several runs. A design
+  // that ran once and printed a range would be printing a range of one number
+  // and calling it evidence.
+  it("runs the seed that was set and the ones after it", async () => {
+    answers(200, BODY);
+    panel();
+    fireEvent.change(screen.getByLabelText(/Seed/), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: /Run simulation/ }));
+    await waitFor(() => {
+      expect(vi.mocked(fetch).mock.calls).toHaveLength(SEEDS);
+    });
+    const sent = vi.mocked(fetch).mock.calls.map((call) => {
+      const body = call[1]?.body;
+      return (JSON.parse(typeof body === "string" ? body : "") as { workload: { seed: number } })
+        .workload.seed;
+    });
+    expect(sent).toEqual([7, 8, 9, 10, 11]);
+  });
+
+  it("says how much of the answer was luck", async () => {
+    answers(200, BODY);
     panel();
     fireEvent.click(screen.getByRole("button", { name: /Run simulation/ }));
     await waitFor(() => {
-      expect(screen.getByText("200 req/s")).toBeDefined();
+      expect(screen.getByText(/How much of that was luck/)).toBeDefined();
     });
-    expect(screen.getByText("20 ms")).toBeDefined();
-    expect(screen.getByText("api")).toBeDefined();
-    expect(screen.getByText("60%")).toBeDefined();
+    // Every mocked run answers identically, so the range is a point — which is
+    // the honest thing to show for runs that agreed, and still says the number
+    // came from five of them.
+    expect(screen.getByText(/Over 5 seeds/)).toBeDefined();
   });
 
   it("sends the load as it was edited, not as it started", async () => {

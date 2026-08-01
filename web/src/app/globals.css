@@ -536,6 +536,29 @@ body {
   color: var(--muted);
 }
 
+/* --- how much of that was luck --------------------------------------- */
+
+.results__luck {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+
+.results__luck .results__heading {
+  margin-top: 0;
+}
+
+.results__luck-line {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.results__luck-line b {
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- simulation ------------------------------------------------------ */
 
 .workspace__side {

@@ -7,6 +7,7 @@ import { Operations } from "@/features/simulation/Operations";
 import { Results } from "@/features/simulation/Results";
 import { type SimulationResult, simulate } from "@/features/simulation/client";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
+import { type Spread, seedsFrom, spreadOf } from "@/features/simulation/spread";
 import { whyNotOffer, whyNotRun } from "@/lib/design";
 import type { Topology, Workload } from "@/lib/topology";
 
@@ -30,7 +31,7 @@ interface SimulationPanelProps {
 type Run =
   | { status: "idle" }
   | { status: "running" }
-  | { status: "done"; result: SimulationResult }
+  | { status: "done"; result: SimulationResult; spread: Spread | null }
   | { status: "failed"; reason: string };
 
 export function SimulationPanel({
@@ -47,11 +48,29 @@ export function SimulationPanel({
   // thing to be told about.
   const blocked = whyNotRun(topology) ?? whyNotOffer(workload);
 
+  // Every run is run several times, at consecutive seeds, and the first of
+  // them is the one reported. The rest are there to say how much of it was
+  // luck — a question a single number cannot even raise, and one that two
+  // rewrites of the seed's hint failed to answer in prose.
+  //
+  // All of them together rather than showing the first and filling the range
+  // in afterwards: a second state transition would need guarding against a
+  // run started before the last one finished, and the extra runs cost
+  // milliseconds against a simulation that has already been decided.
   const start = () => {
     setRun({ status: "running" });
-    simulate(topology, workload)
-      .then((result) => {
-        setRun({ status: "done", result });
+    // The run that was asked for, first and named, then the rest. Written this
+    // way rather than as one map over every seed because the first result is
+    // the one reported: taken out of an array it is `Result | undefined`, and
+    // the branch for a case that cannot happen would be a line no test could
+    // ever reach.
+    const [, ...others] = seedsFrom(workload.seed);
+    Promise.all([
+      simulate(topology, workload),
+      ...others.map((seed) => simulate(topology, { ...workload, seed })),
+    ])
+      .then(([asked, ...rest]) => {
+        setRun({ status: "done", result: asked, spread: spreadOf([asked, ...rest]) });
       })
       .catch((error: unknown) => {
         // Every failure the engine reports is a statement about the design or
@@ -94,7 +113,7 @@ export function SimulationPanel({
       <p className="simulation__error" role="alert">
         {run.status === "failed" ? run.reason : ""}
       </p>
-      {run.status === "done" ? <Results result={run.result} /> : null}
+      {run.status === "done" ? <Results result={run.result} spread={run.spread} /> : null}
     </section>
   );
 }
