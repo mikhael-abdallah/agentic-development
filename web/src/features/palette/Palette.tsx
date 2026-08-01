@@ -49,7 +49,8 @@ export function Palette({ onAdd }: PaletteProps) {
       </ul>
       <p className="palette__hint">
         Drag one onto the canvas, or click to drop it in the middle. Join two by
-        dragging from the right edge of one to the left edge of the next.
+        dragging from the right edge of one to the left edge of the next. Copy a
+        component you have set up with Ctrl+C and paste it with Ctrl+V.
       </p>
     </aside>
   );

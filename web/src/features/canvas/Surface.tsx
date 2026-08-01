@@ -23,6 +23,7 @@ import {
   toFlowEdges,
   toFlowNodes,
 } from "@/features/canvas/graph";
+import { useClipboard } from "@/features/canvas/useClipboard";
 import type { DesignController } from "@/features/canvas/useDesign";
 import { componentSignature, whyNotConnect } from "@/lib/design";
 import { KIND_MIME } from "@/lib/drag";
@@ -71,7 +72,7 @@ interface SurfaceProps {
 }
 
 function Flow({ controller, onEdit }: SurfaceProps) {
-  const { design, add, move, link, unlink, drop, select } = controller;
+  const { design, add, paste, move, link, unlink, drop, select } = controller;
   const { screenToFlowPosition, fitView } = useReactFlow();
   // Why the last connection was refused. Shown rather than swallowed: an edge
   // that silently fails to appear reads as a broken canvas.
@@ -85,6 +86,14 @@ function Flow({ controller, onEdit }: SurfaceProps) {
 
   const nodes = useMemo(() => toFlowNodes(design, sizes), [design, sizes]);
   const edges = useMemo(() => toFlowEdges(design.topology), [design.topology]);
+
+  // The component itself rather than its id, so that the copy handler holds
+  // what it needs to write and the listeners are not re-registered on every
+  // pixel of a drag: moving a component leaves the component object alone.
+  useClipboard(
+    design.topology.nodes.find((node) => node.id === design.selected),
+    paste,
+  );
 
   // Bring the view back whenever the set of components changes — one arriving
   // or leaving is exactly when something can land outside the window. Keyed on

@@ -11,6 +11,7 @@ import {
   freeSpot,
   layoutOf,
   moveNode,
+  pasteNode,
   removeNode,
   replaceNode,
   selectNode,
@@ -18,7 +19,7 @@ import {
   whyNotConnect,
   whyNotRun,
 } from "@/lib/design";
-import type { Scenario } from "@/lib/topology";
+import { type DesignNode, type Scenario, newNode } from "@/lib/topology";
 
 const SOMEWHERE = { x: 100, y: 100 };
 
@@ -476,3 +477,106 @@ describe("a client calling a pool", () => {
   });
 });
 
+/** A component of a design, by id. Throws rather than returning undefined: a
+ *  test that went on with a missing component would assert about nothing. */
+function nodeIn(design: Design, id: string): DesignNode {
+  const node = design.topology.nodes.find((existing) => existing.id === id);
+  if (node === undefined) {
+    throw new Error(`the design has no ${id}`);
+  }
+  return node;
+}
+
+/** The chain, with its service named and tuned away from the defaults, so a
+ *  copy that quietly came back with default settings would be visible. */
+function tuned(): Design {
+  const design = chain();
+  const service = nodeIn(design, "service");
+  return replaceNode(design, {
+    ...service,
+    label: "Redirect API",
+    service: { instances: 7, meanServiceMs: 3.5, queueCapacity: 250 },
+  });
+}
+
+describe("pasteNode", () => {
+  it("copies the settings and gives the copy an id of its own", () => {
+    const design = tuned();
+    const pasted = pasteNode(design, nodeIn(design, "service"), SOMEWHERE);
+    const copy = nodeIn(pasted, "service-2");
+    expect(copy.service).toEqual({ instances: 7, meanServiceMs: 3.5, queueCapacity: 250 });
+    expect(copy.label).toBe("Redirect API");
+  });
+
+  it("names the copy after the component it came from", () => {
+    const design = chain();
+    const pasted = pasteNode(design, { ...nodeIn(design, "service"), id: "api" }, SOMEWHERE);
+    expect(pasted.topology.nodes.map((node) => node.id)).toContain("api");
+  });
+
+  it("places the copy where it was put, and selects it", () => {
+    const design = chain();
+    const pasted = pasteNode(design, nodeIn(design, "service"), SOMEWHERE);
+    expect(pasted.positions.get("service-2")).toEqual(SOMEWHERE);
+    expect(pasted.selected).toBe("service-2");
+  });
+
+  // An edge is a fact about two components, and there is no answer to which of
+  // a copy's ends to keep. Wiring the copy the way the original was wired
+  // would be a design decision the user did not make and would have to undo.
+  it("copies the component and not its connections", () => {
+    const design = chain();
+    const pasted = pasteNode(design, nodeIn(design, "service"), SOMEWHERE);
+    expect(edgeList(pasted)).toEqual(["client->service", "service->database"]);
+  });
+
+  it("leaves the design it was given alone", () => {
+    const before = chain();
+    pasteNode(before, nodeIn(before, "service"), SOMEWHERE);
+    expect(before.topology.nodes).toHaveLength(3);
+    expect(before.positions.has("service-2")).toBe(false);
+  });
+
+  // Two copies of one component used to share a parameters object, because a
+  // spread copies it by reference. Raising the instance count on either raised
+  // it on both, and nothing on screen said why.
+  //
+  // Asked of every kind that carries parameters, because each is a line of its
+  // own in `unshared` — a loop over the keys would type-check against any
+  // member of the union and so against none of them — and three of those lines
+  // being right says nothing about the fourth.
+  it("gives each copy parameters of its own", () => {
+    // Named accessors rather than `node[kind]`: a key read out of a variable
+    // is the shape prototype pollution takes, and the rule that says so does
+    // not care that this one came from a literal.
+    const kinds = [
+      { kind: "loadBalancer", of: (node: DesignNode) => node.loadBalancer },
+      { kind: "service", of: (node: DesignNode) => node.service },
+      { kind: "cache", of: (node: DesignNode) => node.cache },
+      { kind: "database", of: (node: DesignNode) => node.database },
+    ] as const;
+    for (const { kind, of } of kinds) {
+      const source = newNode(kind, kind);
+      const twice = pasteNode(pasteNode(emptyDesign(), source, SOMEWHERE), source, SOMEWHERE);
+      const first = of(nodeIn(twice, kind));
+      const second = of(nodeIn(twice, `${kind}-2`));
+      expect(first).toEqual(second);
+      expect(first).not.toBe(second);
+      expect(first).not.toBe(of(source));
+    }
+  });
+
+  it("copies the parameters rather than only their reference", () => {
+    const design = chain();
+    const source = nodeIn(design, "service");
+    const twice = pasteNode(pasteNode(design, source, SOMEWHERE), source, SOMEWHERE);
+    const first = nodeIn(twice, "service-2");
+    const second = nodeIn(twice, "service-3");
+    if (first.service === undefined || second.service === undefined) {
+      throw new Error("a copy lost its parameters");
+    }
+    first.service.instances = 99;
+    expect(second.service.instances).not.toBe(99);
+    expect(source.service?.instances).not.toBe(99);
+  });
+});

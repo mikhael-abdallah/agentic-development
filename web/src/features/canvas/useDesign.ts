@@ -11,6 +11,7 @@ import {
   emptyDesign,
   freeSpot,
   moveNode,
+  pasteNode,
   removeNode,
   replaceNode,
   selectNode,
@@ -35,6 +36,9 @@ export interface DesignController {
    *  a click on the palette has no place in mind, and dropping every one of
    *  them on the same point stacks them into a single visible box. */
   add: (kind: NodeKind, at?: Position) => void;
+  /** Adds a copy of a component that already exists somewhere — the clipboard,
+   *  usually — keeping its settings and giving it an id of its own. */
+  paste: (node: DesignNode, at?: Position) => void;
   move: (id: string, at: Position) => void;
   link: (from: string, to: string) => void;
   unlink: (from: string, to: string) => void;
@@ -49,6 +53,9 @@ export function useDesign(initial?: Design): DesignController {
 
   const add = useCallback((kind: NodeKind, at?: Position) => {
     setDesign((current) => addNode(current, kind, at ?? freeSpot(current)));
+  }, []);
+  const paste = useCallback((node: DesignNode, at?: Position) => {
+    setDesign((current) => pasteNode(current, node, at ?? freeSpot(current)));
   }, []);
   const move = useCallback((id: string, at: Position) => {
     setDesign((current) => moveNode(current, id, at));
@@ -70,7 +77,7 @@ export function useDesign(initial?: Design): DesignController {
   }, []);
 
   return useMemo(
-    () => ({ design, add, move, link, unlink, drop, select, replace, load: setDesign }),
-    [design, add, move, link, unlink, drop, select, replace],
+    () => ({ design, add, paste, move, link, unlink, drop, select, replace, load: setDesign }),
+    [design, add, paste, move, link, unlink, drop, select, replace],
   );
 }
