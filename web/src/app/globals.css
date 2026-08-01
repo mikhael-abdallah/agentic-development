@@ -431,6 +431,111 @@ body {
   color: var(--muted);
 }
 
+/* --- operations ------------------------------------------------------ */
+
+.operations {
+  margin: 0.9rem 0 0;
+  padding: 0;
+  border: none;
+}
+
+.operations__legend {
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.operations__hint {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.operations__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* Name, kind, share, unit, remove. The name takes what is left because it is
+   the only one whose content varies; the rest are sized to what they hold. */
+.operation {
+  display: grid;
+  grid-template-columns: 1fr 4.4rem 3rem auto auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.operation__name,
+.operation__kind,
+.operation__share {
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.operation__name:focus-visible,
+.operation__kind:focus-visible,
+.operation__share:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.operation__unit {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.operation__remove {
+  padding: 0 0.3rem;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.operation__remove:hover,
+.operation__remove:focus-visible {
+  color: var(--database);
+}
+
+.operations__footer {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.operations__add {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.operations__total {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 /* --- simulation ------------------------------------------------------ */
 
 .workspace__side {

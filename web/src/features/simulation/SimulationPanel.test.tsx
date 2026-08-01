@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
 import { addNode, connect, emptyDesign } from "@/lib/design";
+import { defaultWorkload } from "@/lib/topology";
 
 const BODY = {
   arrived: 1000,
@@ -50,7 +51,12 @@ afterEach(() => {
 describe("SimulationPanel", () => {
   it("offers every part of the load the engine reads", () => {
     panel();
-    expect(screen.getAllByRole("spinbutton")).toHaveLength(WORKLOAD_FIELDS.length);
+    // The numeric fields, and a share for each operation. The workload is no
+    // longer all rows of numbers: what the traffic asks for is a list, and its
+    // shares are the rest of the spinners on screen.
+    const operations = defaultWorkload().operations.length;
+    expect(operations).toBeGreaterThan(0);
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(WORKLOAD_FIELDS.length + operations);
   });
 
   it("shows nothing until a run has happened", () => {

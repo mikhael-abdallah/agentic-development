@@ -93,10 +93,7 @@ export interface Topology {
  * already the operation's own service time.
  */
 export const OPERATION_KINDS = ["read", "write"] as const;
-// Not exported until something outside this file needs to name it. The list
-// above is what a caller checks a value against, and `Operation` below carries
-// the type without anyone having to spell it.
-type OperationKind = (typeof OPERATION_KINDS)[number];
+export type OperationKind = (typeof OPERATION_KINDS)[number];
 
 /**
  * One thing a design is asked to do, and how much of the traffic asks for it.
