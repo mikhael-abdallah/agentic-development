@@ -82,6 +82,32 @@ describe("Library", () => {
     expect(loaded.positions.size).toBe(2);
   });
 
+  // A preset states the traffic it was written for. Drawing its components
+  // while the panel went on offering the default read and write was the preset
+  // describing one system and the run measuring another — invisible while the
+  // load was a single fraction that happened to match, and plain as soon as
+  // the operations had names.
+  it("loads a preset with the load it was written for", async () => {
+    answers(200, [SHORTENER]);
+    const onLoad = library();
+    await waitFor(() => {
+      expect(screen.getByText("URL shortener")).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /URL shortener/ }));
+    expect(onLoad.mock.calls[0]?.[1]).toEqual(SHORTENER.workload);
+  });
+
+  // A saved design is a topology and nothing else. Handing back a default
+  // workload nobody asked for would replace a load the user had tuned, which
+  // is the same defect the other way round.
+  it("loads a saved design without touching the load", () => {
+    answers(200, []);
+    saveDesign("earlier", SHORTENER.topology);
+    const onLoad = library();
+    fireEvent.click(screen.getByRole("button", { name: "earlier" }));
+    expect(onLoad.mock.calls[0]?.[1]).toBeUndefined();
+  });
+
   // The goal is the reason a preset exists rather than a fixture. Showing it on
   // load is the difference between a design and a thing to try.
   it("says what to try with a preset once it is loaded", async () => {

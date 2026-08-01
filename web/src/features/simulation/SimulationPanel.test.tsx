@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SimulationPanel } from "@/features/simulation/SimulationPanel";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
 import { addNode, connect, emptyDesign } from "@/lib/design";
-import { defaultWorkload } from "@/lib/topology";
+import { type Topology, type Workload, defaultWorkload } from "@/lib/topology";
 
 const BODY = {
   arrived: 1000,
@@ -40,8 +41,26 @@ function runnable() {
   return connect(design, "client", "service").topology;
 }
 
+/**
+ * The panel with the state its page holds.
+ *
+ * The workload lives above the panel now, because the library beside it can
+ * replace one — so a test that passed a constant would be testing a panel that
+ * cannot be typed into. This stands in for the page, and nothing more.
+ */
+function Harness({ topology = runnable() }: { readonly topology?: Topology }) {
+  const [workload, setWorkload] = useState<Workload>(defaultWorkload);
+  return (
+    <SimulationPanel
+      topology={topology}
+      workload={workload}
+      onWorkloadChange={setWorkload}
+    />
+  );
+}
+
 function panel() {
-  return render(<SimulationPanel topology={runnable()} />);
+  return render(<Harness />);
 }
 
 afterEach(() => {
@@ -89,6 +108,38 @@ describe("SimulationPanel", () => {
       workload: { rateRps: number };
     };
     expect(sent.workload.rateRps).toBe(750);
+  });
+
+  // The other half of the load, and the half that is not a row of numbers.
+  // Operations.tsx checks that the editor reports an edit; this checks that the
+  // panel carries one through to the engine, which is a different join and the
+  // one that was never covered.
+  it("sends the operations as they were edited", async () => {
+    answers(200, BODY);
+    panel();
+    fireEvent.change(screen.getByLabelText(/Name of operation 1/), {
+      target: { value: "resolve" },
+    });
+    fireEvent.change(screen.getByLabelText(/Share of traffic for resolve/), {
+      target: { value: "80" },
+    });
+    fireEvent.change(screen.getByLabelText(/Share of traffic for write/), {
+      target: { value: "20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run simulation/ }));
+    await waitFor(() => {
+      expect(vi.mocked(fetch)).toHaveBeenCalled();
+    });
+    const body = vi.mocked(fetch).mock.calls[0]?.[1]?.body;
+    const sent = JSON.parse(typeof body === "string" ? body : "") as {
+      workload: { operations: { name: string; share: number }[] };
+    };
+    expect(sent.workload.operations.map((operation) => operation.name)).toEqual([
+      "resolve",
+      "write",
+    ]);
+    expect(sent.workload.operations[0]?.share).toBeCloseTo(0.8, 10);
+    expect(sent.workload.operations[1]?.share).toBeCloseTo(0.2, 10);
   });
 
   // Every refusal the engine sends is a statement about the design or the
@@ -169,13 +220,13 @@ describe("SimulationPanel saying what it applies to", () => {
   // says which, next to a button that cannot be pressed. A disabled control
   // that gives no reason is indistinguishable from a broken one.
   it("refuses to run a design with no client, and says so", () => {
-    render(<SimulationPanel topology={{ nodes: [], edges: [] }} />);
+    render(<Harness topology={{ nodes: [], edges: [] }} />);
     expect(screen.getByRole("button", { name: /Run simulation/ })).toHaveProperty("disabled", true);
     expect(screen.getByText(/This design has no client/)).toBeDefined();
   });
 
   it("runs once the design has one", () => {
-    render(<SimulationPanel topology={runnable()} />);
+    render(<Harness />);
     expect(screen.getByRole("button", { name: /Run simulation/ })).toHaveProperty("disabled", false);
   });
 });

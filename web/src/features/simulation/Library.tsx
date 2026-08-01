@@ -12,11 +12,20 @@ import {
   saveDesign,
   subscribeToDesigns,
 } from "@/lib/designStore";
-import type { Scenario, Topology } from "@/lib/topology";
+import type { Scenario, Topology, Workload } from "@/lib/topology";
 
 interface LibraryProps {
   readonly topology: Topology;
-  readonly onLoad: (design: Design) => void;
+  /**
+   * Takes the load a design came with, when it came with one.
+   *
+   * A preset states the traffic it was written for — the shortener resolves
+   * and shortens — and drawing its five components while the panel went on
+   * offering the default read and write was the preset describing one system
+   * and the run measuring another. A saved design carries no workload, so it
+   * passes none and whatever is set stays set.
+   */
+  readonly onLoad: (design: Design, workload?: Workload) => void;
 }
 
 /**
@@ -86,7 +95,7 @@ export function Library({ topology, onLoad }: LibraryProps) {
                   type="button"
                   className="library__item"
                   onClick={() => {
-                    onLoad(designOf(preset));
+                    onLoad(designOf(preset), preset.workload);
                     setName(preset.title);
                     setNote(preset.goal);
                   }}
