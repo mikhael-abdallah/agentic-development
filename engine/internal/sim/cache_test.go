@@ -58,13 +58,13 @@ func cachedWith(
 // reads is a workload of nothing but reads; writes is the opposite.
 func reads(rate float64, seed uint64) model.Workload {
 	w := load(rate, seed)
-	w.ReadFraction = 1
+	w.Operations = asking(1)
 	return w
 }
 
 func writes(rate float64, seed uint64) model.Workload {
 	w := load(rate, seed)
-	w.ReadFraction = 0
+	w.Operations = asking(0)
 	return w
 }
 

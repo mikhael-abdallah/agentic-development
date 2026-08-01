@@ -30,16 +30,6 @@ export const WORKLOAD_FIELDS: NumberField<Workload>[] = [
     set: (workload, value) => ({ ...workload, rateRps: value }),
   },
   {
-    label: "Read fraction",
-    hint: "The share of requests that only read. It is what makes a cache and a read replica worth anything, so it belongs to the load rather than to any one component.",
-    unit: "",
-    min: 0,
-    max: 1,
-    step: 0.05,
-    get: (workload) => workload.readFraction,
-    set: (workload, value) => ({ ...workload, readFraction: value }),
-  },
-  {
     label: "Duration",
     hint: "How much simulated time to run for. Not wall clock: a busy hour costs the same seconds to simulate as a quiet one.",
     unit: "ms",

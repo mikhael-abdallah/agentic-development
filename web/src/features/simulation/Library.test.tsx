@@ -25,7 +25,13 @@ const SHORTENER: Scenario = {
     ],
     edges: [{ from: "client", to: "db" }],
   },
-  workload: { rateRps: 300, readFraction: 0.95, durationMs: 60000, seed: 1, warmupFraction: 0.2 },
+  workload: {
+    rateRps: 300,
+    operations: [{ name: "resolve", kind: "read", share: 1 }],
+    durationMs: 60000,
+    seed: 1,
+    warmupFraction: 0.2,
+  },
 };
 
 function answers(status: number, body: unknown): void {

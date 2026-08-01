@@ -70,10 +70,30 @@ func frontend() model.Node {
 // component's own numbers, has to match.
 func same(a, b sim.Result) bool { return reflect.DeepEqual(a, b) }
 
+// asking splits traffic between one read and one write in the given
+// proportion — what a workload used to say with a single ReadFraction, now
+// that it says it by naming what the requests are asking for.
+//
+// The all-or-nothing cases are separate because an operation with no share is
+// refused: one that never happens would sit in the workload and in the results
+// looking like part of the load while contributing nothing.
+func asking(readShare float64) []model.Operation {
+	switch readShare {
+	case 0:
+		return []model.Operation{{Name: "write", Kind: model.Write, Share: 1}}
+	case 1:
+		return []model.Operation{{Name: "read", Kind: model.Read, Share: 1}}
+	}
+	return []model.Operation{
+		{Name: "read", Kind: model.Read, Share: readShare},
+		{Name: "write", Kind: model.Write, Share: 1 - readShare},
+	}
+}
+
 func load(rate float64, seed uint64) model.Workload {
 	return model.Workload{
 		RateRPS:        rate,
-		ReadFraction:   1,
+		Operations:     asking(1),
 		Duration:       30_000,
 		Seed:           seed,
 		WarmupFraction: 0.1,
@@ -266,5 +286,107 @@ func TestRunValidatesItsInputs(t *testing.T) {
 	bad.RateRPS = 0
 	if _, err := sim.Run(chain(1, 5, 0), bad); !errors.Is(err, model.ErrWorkload) {
 		t.Errorf("Run() with no arrivals = %v, want ErrWorkload", err)
+	}
+}
+
+// Naming what the traffic asks for changed how a request is decided and must
+// not have changed what a run reports.
+//
+// The old model drew `r.Float64() < readFraction` — one draw, a read below the
+// fraction. Choosing an operation walks the shares in order and stops at the
+// first one the same draw falls inside, which for a read followed by a write is
+// the same comparison spelled differently. Anything that took a second draw
+// would shift every later draw in the stream, and a design nobody touched would
+// start answering differently.
+//
+// The shortener's own figures are pinned in scenario_test.go against the
+// numbers the previous model produced. This says the same thing about a design
+// small enough to see: that the split is not merely close, it is the same
+// requests being the same operations.
+func TestNamingTheOperationsDoesNotMoveTheSplit(t *testing.T) {
+	t.Parallel()
+	design := stored(1, 1, 2, 20)
+	for _, share := range []float64{0.1, 0.5, 0.7, 0.9} {
+		w := load(90, 4)
+		w.Operations = asking(share)
+		res, err := sim.Run(design, w)
+		if err != nil {
+			t.Fatalf("read share %g: %v", share, err)
+		}
+		// Two operations named in the other order pick the other one for every
+		// draw, so the reads and the writes swap places exactly.
+		flipped := load(90, 4)
+		flipped.Operations = []model.Operation{
+			{Name: "write", Kind: model.Write, Share: 1 - share},
+			{Name: "read", Kind: model.Read, Share: share},
+		}
+		other, err := sim.Run(design, flipped)
+		if err != nil {
+			t.Fatalf("read share %g flipped: %v", share, err)
+		}
+		if res.Arrived != other.Arrived {
+			t.Errorf("read share %g: %d arrivals one way and %d the other — "+
+				"choosing an operation is taking a draw the arrival process needed",
+				share, res.Arrived, other.Arrived)
+		}
+	}
+}
+
+// An operation's name is for the reader. Two workloads that differ only in what
+// their operations are called have to produce identical results, or the name is
+// quietly a parameter.
+func TestRenamingAnOperationChangesNothing(t *testing.T) {
+	t.Parallel()
+	design := stored(1, 1, 2, 20)
+	plain := load(90, 7)
+	plain.Operations = asking(0.8)
+	named := load(90, 7)
+	named.Operations = []model.Operation{
+		{Name: "resolve", Kind: model.Read, Share: 0.8},
+		{Name: "shorten", Kind: model.Write, Share: 0.2},
+	}
+	first, err := sim.Run(design, plain)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	second, err := sim.Run(design, named)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if !same(first, second) {
+		t.Error("renaming the operations changed the result, so the name is not just a name")
+	}
+}
+
+// More than two, because nothing about the model says two. The shares are
+// walked in order and each has to claim its own slice of the draw — and the two
+// reads have to both count as reads rather than the second one falling through
+// to whatever comes after it.
+//
+// Behind a cache that answers every read, the store sees writes and nothing
+// else. So the share of traffic reaching it is the share of the one write
+// operation, which is the whole measurement: get the walk wrong by one entry
+// and this reads 0.4 or 0, not 0.1.
+func TestEveryOperationGetsItsShareOfTheTraffic(t *testing.T) {
+	t.Parallel()
+	w := load(400, 11)
+	w.Duration = 60_000
+	w.WarmupFraction = 0
+	w.Operations = []model.Operation{
+		{Name: "resolve", Kind: model.Read, Share: 0.6},
+		{Name: "preview", Kind: model.Read, Share: 0.3},
+		{Name: "shorten", Kind: model.Write, Share: 0.1},
+	}
+	res, err := sim.Run(cached(1, 0.1, 1), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if res.Arrived == 0 {
+		t.Fatal("nothing arrived")
+	}
+	reaching := float64(res.Nodes["store"].Served) / float64(res.Nodes["cache"].Served)
+	if reaching < 0.085 || reaching > 0.115 {
+		t.Errorf("%.3f of the traffic reached the store behind a cache that answers "+
+			"every read, want about the 0.1 share the one write operation has", reaching)
 	}
 }

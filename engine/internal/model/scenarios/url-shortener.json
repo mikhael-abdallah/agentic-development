@@ -1,7 +1,7 @@
 {
   "id": "url-shortener",
   "title": "URL shortener",
-  "description": "The canonical read-heavy path. Almost every request is a redirect that only reads, so a cache in front of the database decides how much load the database ever sees, and the service pool decides how much concurrency there is to go around.",
+  "description": "Two operations share one path. Nineteen requests in twenty are a resolve — someone following a short link, which only has to read the code back — and the twentieth is a shorten, which has to write one. That ratio is why a cache in front of the database decides how much load the database ever sees, and why the service pool decides how much concurrency there is to go around.",
   "goal": "Raise rateRps toward 500 and watch p99 pull away from the mean long before anything is dropped — that gap is the queue forming. Then put the cache hit ratio back down to 0.2 and run it again: the database stops being an afterthought and becomes the bottleneck, without a single parameter of the database itself changing.",
   "topology": {
     "nodes": [
@@ -40,7 +40,10 @@
   },
   "workload": {
     "rateRps": 300,
-    "readFraction": 0.95,
+    "operations": [
+      {"name": "resolve", "kind": "read", "share": 0.95},
+      {"name": "shorten", "kind": "write", "share": 0.05}
+    ],
     "durationMs": 60000,
     "seed": 1,
     "warmupFraction": 0.2

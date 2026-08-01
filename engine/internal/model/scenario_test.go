@@ -22,7 +22,7 @@ func preset(id string) string {
 	    ],
 	    "edges": [{"from": "client", "to": "svc"}]
 	  },
-	  "workload": {"rateRps": 10, "readFraction": 1, "durationMs": 1000,
+	  "workload": {"rateRps": 10, "operations": [{"name": "read", "kind": "read", "share": 1}], "durationMs": 1000,
 	               "seed": 1, "warmupFraction": 0.1}
 	}`, id)
 }
@@ -72,10 +72,31 @@ func TestTheUrlShortenerIsShipped(t *testing.T) {
 			t.Errorf("the url-shortener preset has no %s", want)
 		}
 	}
+	// A shortener resolves and it shortens, and a preset that named only one
+	// of them would be describing a different system. Named rather than
+	// counted, because "two operations" is satisfied by two called `a` and `b`
+	// — and the whole reason these exist is to say what the traffic is for.
+	named := map[string]OperationKind{}
+	for _, op := range shortener.Workload.Operations {
+		named[op.Name] = op.Kind
+	}
+	for name, want := range map[string]OperationKind{"resolve": Read, "shorten": Write} {
+		if got, ok := named[name]; !ok {
+			t.Errorf("the url-shortener preset does not say it %ss anything", name)
+		} else if got != want {
+			t.Errorf("the preset's %s is a %s, want a %s", name, got, want)
+		}
+	}
 	// Read-heavy, or the cache in it is decoration.
-	if shortener.Workload.ReadFraction < 0.9 {
-		t.Errorf("readFraction is %g, which is not the read-heavy load a "+
-			"shortener is", shortener.Workload.ReadFraction)
+	reading := 0.0
+	for _, op := range shortener.Workload.Operations {
+		if op.Kind == Read {
+			reading += op.Share
+		}
+	}
+	if reading < 0.9 {
+		t.Errorf("reads are %g of the load, which is not the read-heavy traffic "+
+			"a shortener carries", reading)
 	}
 }
 

@@ -17,8 +17,8 @@ func database(pool int, loads ...int) *station {
 	return &station{id: "db", slots: append([]int(nil), loads...), pool: pool}
 }
 
-func read() *request  { return &request{read: true} }
-func write() *request { return &request{} }
+func read() *request  { return &request{op: model.Operation{Kind: model.Read}} }
+func write() *request { return &request{op: model.Operation{Kind: model.Write}} }
 
 // A write is the primary's alone. A replica that accepted one would be
 // acknowledging a write on a machine that cannot take it.

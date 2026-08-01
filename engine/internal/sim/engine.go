@@ -44,12 +44,18 @@ const arrivalStream = "\x00arrivals"
 // request is one unit of work moving through the design.
 type request struct {
 	arrived time.Duration
-	// read is drawn here and not yet read by anything: a pool of servers
-	// treats both alike. Caches and read replicas are the components that
+	// op is drawn here and not yet read by anything: a pool of servers treats
+	// every operation alike. Caches and read replicas are the components that
 	// will ask, and drawing it at arrival rather than at the component that
 	// needs it keeps a request's identity fixed for its whole journey — it
 	// cannot be a read at the cache and a write at the database behind it.
-	read bool
+	op model.Operation
+}
+
+// read reports whether this request can be answered without changing anything,
+// which is the only thing the components downstream need to know about it.
+func (r *request) read() bool {
+	return r.op.Kind == model.Read
 }
 
 type engine struct {
@@ -60,10 +66,10 @@ type engine struct {
 	stations map[string]*station
 	entry    string
 
-	horizon      time.Duration
-	measureFrom  time.Duration
-	arrivalMean  time.Duration
-	readFraction float64
+	horizon     time.Duration
+	measureFrom time.Duration
+	arrivalMean time.Duration
+	operations  []model.Operation
 
 	result    Result
 	latencies []time.Duration
@@ -112,13 +118,13 @@ func newEngine(t model.Topology, w model.Workload) (*engine, error) {
 
 	horizon := w.Duration.Duration()
 	return &engine{
-		rng:          newStreams(w.Seed),
-		stations:     stations,
-		entry:        out[0],
-		horizon:      horizon,
-		measureFrom:  time.Duration(float64(horizon) * w.WarmupFraction),
-		arrivalMean:  time.Duration(float64(time.Second) / w.RateRPS),
-		readFraction: w.ReadFraction,
+		rng:         newStreams(w.Seed),
+		stations:    stations,
+		entry:       out[0],
+		horizon:     horizon,
+		measureFrom: time.Duration(float64(horizon) * w.WarmupFraction),
+		arrivalMean: time.Duration(float64(time.Second) / w.RateRPS),
+		operations:  w.Operations,
 	}, nil
 }
 
@@ -199,8 +205,32 @@ func (e *engine) scheduleArrival(after time.Duration) {
 	e.schedule(event{
 		at:   at,
 		kind: arrival,
-		req:  &request{arrived: at, read: r.Float64() < e.readFraction},
+		req:  &request{arrived: at, op: e.operation(r.Float64())},
 	})
+}
+
+// operation picks which operation an arrival is asking for, from a draw in
+// [0,1).
+//
+// One draw, deliberately. It replaced `r.Float64() < readFraction` and consumes
+// exactly what that consumed, which is what keeps every existing run producing
+// the number it produced: a second draw here would shift every later draw in
+// the stream and change answers that nothing about the design had changed.
+//
+// Walking the shares in order rather than sampling them: the order an operation
+// is written in is the order it is chosen by, so a workload's behaviour is
+// readable off the workload. Validate has already checked that the shares add
+// to one, and the fallthrough covers only the last few bits of floating-point
+// slack at the very top of the range.
+func (e *engine) operation(draw float64) model.Operation {
+	cumulative := 0.0
+	for _, op := range e.operations {
+		cumulative += op.Share
+		if draw < cumulative {
+			return op
+		}
+	}
+	return e.operations[len(e.operations)-1]
 }
 
 // admit puts a request into a component: straight onto a server with room for
@@ -228,7 +258,7 @@ func (e *engine) startService(st *station, server int, req *request) {
 		st.served++
 	}
 	hold := st.hold
-	if !req.read {
+	if !req.read() {
 		hold = st.holdWrite
 	}
 	if st.sampled {
@@ -317,7 +347,7 @@ func (e *engine) answered(st *station, req *request) bool {
 	// rerolling everything. That is the difference between a comparison and a
 	// reroll, and it is why this is not folded into the branches below.
 	hit := e.rng.stream(st.id).Float64() < st.hitRatio
-	if req.read {
+	if req.read() {
 		return hit
 	}
 	// A write is never a hit — nothing was found — so what happens to it is

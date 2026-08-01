@@ -87,7 +87,7 @@ func simulated(t *testing.T, utilization float64) time.Duration {
 	for seed := uint64(1); seed <= oracleReplications; seed++ {
 		res, err := sim.Run(chain(1, oracleService, 0), model.Workload{
 			RateRPS:        utilization / oracleService.Duration().Seconds(),
-			ReadFraction:   1,
+			Operations:     asking(1),
 			Duration:       oracleRun,
 			Seed:           seed,
 			WarmupFraction: oracleWarmup,

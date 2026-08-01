@@ -10,10 +10,27 @@ import (
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/model"
 )
 
+// asking splits traffic between one read and one write in the given
+// proportion. The all-or-nothing cases are separate because an operation with
+// no share is refused outright: one that never happens would sit in the
+// workload looking like part of the load while contributing nothing.
+func asking(readShare float64) []model.Operation {
+	switch readShare {
+	case 0:
+		return []model.Operation{{Name: "write", Kind: model.Write, Share: 1}}
+	case 1:
+		return []model.Operation{{Name: "read", Kind: model.Read, Share: 1}}
+	}
+	return []model.Operation{
+		{Name: "read", Kind: model.Read, Share: readShare},
+		{Name: "write", Kind: model.Write, Share: 1 - readShare},
+	}
+}
+
 func validWorkload() model.Workload {
 	return model.Workload{
 		RateRPS:        5000,
-		ReadFraction:   0.99,
+		Operations:     asking(0.99),
 		Duration:       60_000,
 		Seed:           42,
 		WarmupFraction: 0.1,
@@ -59,8 +76,43 @@ func TestWorkloadRejects(t *testing.T) {
 		{"a negative arrival rate", func(w *model.Workload) { w.RateRPS = -1 }},
 		{"a NaN arrival rate", func(w *model.Workload) { w.RateRPS = math.NaN() }},
 		{"an infinite arrival rate", func(w *model.Workload) { w.RateRPS = math.Inf(1) }},
-		{"a read share above one", func(w *model.Workload) { w.ReadFraction = 1.01 }},
-		{"a negative read share", func(w *model.Workload) { w.ReadFraction = -0.01 }},
+		{"no operations at all", func(w *model.Workload) { w.Operations = nil }},
+		{"an operation with no name", func(w *model.Workload) {
+			w.Operations = []model.Operation{{Kind: model.Read, Share: 1}}
+		}},
+		{"two operations of the same name", func(w *model.Workload) {
+			w.Operations = []model.Operation{
+				{Name: "resolve", Kind: model.Read, Share: 0.5},
+				{Name: "resolve", Kind: model.Write, Share: 0.5},
+			}
+		}},
+		{"an operation that is neither a read nor a write", func(w *model.Workload) {
+			w.Operations = []model.Operation{{Name: "resolve", Kind: "lookup", Share: 1}}
+		}},
+		{"an operation that never happens", func(w *model.Workload) {
+			w.Operations = []model.Operation{
+				{Name: "resolve", Kind: model.Read, Share: 1},
+				{Name: "shorten", Kind: model.Write, Share: 0},
+			}
+		}},
+		{"an operation with a negative share", func(w *model.Workload) {
+			w.Operations = []model.Operation{
+				{Name: "resolve", Kind: model.Read, Share: 1.5},
+				{Name: "shorten", Kind: model.Write, Share: -0.5},
+			}
+		}},
+		{"shares that do not account for all the traffic", func(w *model.Workload) {
+			w.Operations = []model.Operation{
+				{Name: "resolve", Kind: model.Read, Share: 0.5},
+				{Name: "shorten", Kind: model.Write, Share: 0.2},
+			}
+		}},
+		{"shares that account for more traffic than arrives", func(w *model.Workload) {
+			w.Operations = []model.Operation{
+				{Name: "resolve", Kind: model.Read, Share: 0.9},
+				{Name: "shorten", Kind: model.Write, Share: 0.9},
+			}
+		}},
 		{"a run of no length", func(w *model.Workload) { w.Duration = 0 }},
 		{"a run of negative length", func(w *model.Workload) { w.Duration = -1 }},
 		{"a warmup share above one", func(w *model.Workload) { w.WarmupFraction = 1.5 }},
@@ -87,7 +139,7 @@ func TestWorkloadRejects(t *testing.T) {
 func TestWorkloadRangeErrorsMatchBothSentinels(t *testing.T) {
 	t.Parallel()
 	w := validWorkload()
-	w.ReadFraction = 2
+	w.RateRPS = -1
 	err := w.Validate()
 	for _, want := range []error{model.ErrWorkload, model.ErrParamRange} {
 		if !errors.Is(err, want) {
@@ -123,7 +175,7 @@ func TestWorkloadJSONRoundTrip(t *testing.T) {
 func TestARateTooFastForTheClockIsRejected(t *testing.T) {
 	t.Parallel()
 	w := model.Workload{
-		RateRPS: 1, ReadFraction: 1, Duration: 1000, Seed: 1, WarmupFraction: 0,
+		RateRPS: 1, Operations: asking(1), Duration: 1000, Seed: 1, WarmupFraction: 0,
 	}
 	// One arrival per nanosecond is the finest the clock can space.
 	w.RateRPS = 1e9
