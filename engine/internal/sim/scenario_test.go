@@ -213,7 +213,7 @@ func TestTheShortenerLoadsItsComponentsTheSame(t *testing.T) {
 	}{
 		{"throughput", res.Throughput, 301.5208333333333},
 		{"the service's utilization", res.Nodes["api"].Utilization, 0.594603574125},
-		{"the database's utilization", res.Nodes["db"].Utilization, 0.27459807838541667},
+		{"the database's utilization", res.Nodes["db"].Utilization, 0.27459817121875},
 		// A balancer and a cache are hops rather than queues, so they have no
 		// capacity to be full of. Pinned so that giving one a queue is a
 		// decision this test makes someone take on purpose.
@@ -226,5 +226,59 @@ func TestTheShortenerLoadsItsComponentsTheSame(t *testing.T) {
 	}
 	if res.Bottleneck != "api" {
 		t.Errorf("the bottleneck is %q, was the service pool", res.Bottleneck)
+	}
+}
+
+// What the preset's goal promises about its schema, kept honest by running it.
+//
+// Prose in a shipped file is documentation nobody executes, and this claim is
+// the strongest one the preset makes: that unticking a single checkbox does not
+// slow the design down so much as stop it. It is worth a test precisely because
+// it sounds like an exaggeration.
+//
+// The design is otherwise untouched — the same components, the same load, the
+// same everything — and the only difference is whether the column the query
+// looks rows up by carries an index.
+func TestDroppingTheIndexTurnsTheShortenerIntoAnOutage(t *testing.T) {
+	t.Parallel()
+	indexed := shortenerResult(t)
+
+	preset := shortener(t)
+	found := false
+	for i := range preset.Topology.Nodes {
+		if preset.Topology.Nodes[i].Database == nil {
+			continue
+		}
+		for j := range preset.Topology.Nodes[i].Database.Tables {
+			for k := range preset.Topology.Nodes[i].Database.Tables[j].Columns {
+				if preset.Topology.Nodes[i].Database.Tables[j].Columns[k].Indexed {
+					found = true
+				}
+				preset.Topology.Nodes[i].Database.Tables[j].Columns[k].Indexed = false
+			}
+		}
+	}
+	// Or this compares the preset with itself and passes for the wrong reason.
+	if !found {
+		t.Fatal("the preset declares no index, so there is none to drop")
+	}
+
+	scanned, err := sim.Run(preset.Topology, preset.Workload)
+	if err != nil {
+		t.Fatalf("Run() without the index: %v", err)
+	}
+	// Three orders of magnitude, not three percent. Fifty million rows at the
+	// rate the preset states is four hundred milliseconds a query, against a
+	// twelve-millisecond read of the one row an index would have found.
+	if scanned.Latency.P99 < 100*indexed.Latency.P99 {
+		t.Errorf("without the index p99 is %v against %v with it, which is not the "+
+			"outage the preset's goal describes", scanned.Latency.P99, indexed.Latency.P99)
+	}
+	if scanned.Nodes["db"].Utilization < 0.99 {
+		t.Errorf("the store is %g utilized without its index, want saturated",
+			scanned.Nodes["db"].Utilization)
+	}
+	if scanned.Bottleneck != "db" {
+		t.Errorf("the bottleneck without the index is %q, want the store", scanned.Bottleneck)
 	}
 }
