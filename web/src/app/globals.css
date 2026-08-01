@@ -431,6 +431,175 @@ body {
   color: var(--muted);
 }
 
+/* --- a database's schema ---------------------------------------------- */
+
+.schema {
+  margin: 0.9rem 0 0;
+  padding: 0;
+  border: none;
+}
+
+.schema__legend {
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.schema__hint {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.schema__subheading {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.schema__add,
+.columns__add {
+  margin-top: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.tables,
+.columns,
+.queries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tables {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* A table is a box, because its columns belong to it and a flat list of rows
+   would leave nothing on screen saying which columns went with which table. */
+.table {
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.table__head {
+  display: grid;
+  grid-template-columns: 1fr 6rem auto auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.columns {
+  margin-top: 0.35rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.column {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.column__indexed {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.queries {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.query {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 3.4rem auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.table__name,
+.table__rows,
+.column__name,
+.query__operation,
+.query__table,
+.query__by,
+.query__rows {
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--page);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.table__name:focus-visible,
+.table__rows:focus-visible,
+.column__name:focus-visible,
+.query__operation:focus-visible,
+.query__table:focus-visible,
+.query__by:focus-visible,
+.query__rows:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.table__unit {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.table__remove,
+.column__remove,
+.query__remove {
+  padding: 0 0.3rem;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.table__remove:hover,
+.column__remove:hover,
+.query__remove:hover,
+.table__remove:focus-visible,
+.column__remove:focus-visible,
+.query__remove:focus-visible {
+  color: var(--database);
+}
+
+.query__unused {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 /* --- a service's api -------------------------------------------------- */
 
 .api {
