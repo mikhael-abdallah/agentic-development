@@ -164,6 +164,23 @@ export interface DesignNode {
 export interface DesignEdge {
   from: string;
   to: string;
+  /**
+   * What carries requests along this connection — "HTTP/1.1", "gRPC", a queue.
+   *
+   * It has no effect on the simulation, and that is stated rather than hidden.
+   * The alternative was a list of protocols with a latency for each, and there
+   * is no honest source for those numbers: what gRPC costs against HTTP depends
+   * on the payload, the language, the proxy in between and the machine, and a
+   * built-in table of plausible figures would be an invention every result then
+   * rested on. `perCallMs` is where a number that moves the answer goes, and it
+   * is the user's number.
+   *
+   * `label` on a component has exactly this status.
+   */
+  transport?: string;
+  /** What this connection adds to every request crossing it. Time in flight:
+   *  it occupies neither component. */
+  perCallMs?: number;
 }
 
 export interface Topology {
@@ -373,6 +390,8 @@ export const NODE_FIELDS = {
  */
 export const OMITTED_WHEN_EMPTY = [
   "endpoints",
+  "transport",
+  "perCallMs",
   "tables",
   "queries",
   "scanPerMillionRowsMs",
@@ -394,7 +413,12 @@ export const ENDPOINT_FIELDS = {
 // fixture carrying every field of every kind, schema included, and round-trips
 // it.
 
-export const EDGE_FIELDS = { from: true, to: true } satisfies Fields<DesignEdge>;
+export const EDGE_FIELDS = {
+  from: true,
+  to: true,
+  transport: true,
+  perCallMs: true,
+} satisfies Fields<Required<DesignEdge>>;
 
 export const WORKLOAD_FIELDS = {
   rateRps: true,

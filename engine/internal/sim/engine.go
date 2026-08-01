@@ -65,6 +65,13 @@ type engine struct {
 	rng      *streams
 	stations map[string]*station
 	entry    string
+	// entryHop is what the connection out of the client costs a request, which
+	// nothing else would charge: the client is where load comes from rather
+	// than a component load passes through, so it is not a station and has no
+	// hop map of its own. Without this, a cost declared on the first connection
+	// in a design validated and was then silently dropped — the run reporting a
+	// latency short by exactly that much, with nothing to say so.
+	entryHop time.Duration
 
 	horizon     time.Duration
 	measureFrom time.Duration
@@ -100,7 +107,7 @@ func newEngine(t model.Topology, w model.Workload) (*engine, error) {
 		if n.Kind == model.KindClient {
 			continue
 		}
-		st, err := newStation(n, t.Downstream(n.ID))
+		st, err := newStation(n, t.Downstream(n.ID), t.HopsFrom(n.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -121,6 +128,7 @@ func newEngine(t model.Topology, w model.Workload) (*engine, error) {
 		rng:         newStreams(w.Seed),
 		stations:    stations,
 		entry:       out[0],
+		entryHop:    t.HopsFrom(client.ID)[out[0]].Duration(),
 		horizon:     horizon,
 		measureFrom: time.Duration(float64(horizon) * w.WarmupFraction),
 		arrivalMean: time.Duration(float64(time.Second) / w.RateRPS),
@@ -184,9 +192,11 @@ func (e *engine) run() Result {
 			if ev.at >= e.measureFrom {
 				e.result.Arrived++
 			}
-			e.admit(e.entry, ev.req)
+			e.handOn(e.entry, ev.req, e.entryHop)
 		case serviceDone:
 			e.finish(ev.station, ev.server, ev.req)
+		case inTransit:
+			e.admit(ev.station, ev.req)
 		}
 	}
 	return e.summarise()
@@ -291,11 +301,34 @@ func (e *engine) finish(id string, server int, req *request) {
 	if len(st.next) == 0 || e.answered(st, req) {
 		e.complete(req)
 	} else {
-		e.admit(e.route(st), req)
+		next := e.route(st)
+		e.handOn(next, req, st.hop[next])
 	}
 	e.accrue(st)
 	st.slots[server]--
 	e.startWaiting(st)
+}
+
+// handOn moves a request to the next component, after however long the
+// connection between them takes.
+//
+// A connection that costs nothing hands the request straight on rather than
+// scheduling an event for the current instant. That is not an optimisation: an
+// event scheduled at the clock's present value goes into the heap behind
+// everything already queued there, so routing every hop through one would
+// reorder events on designs that named no transport at all — and the figures
+// pinned in #90 would move for a feature nobody had used. An event that fires
+// at the instant it was scheduled is a hop, not a wait.
+//
+// The time is not charged to either component. A request crossing a slow link
+// holds no server at either end, and adding it to a hold would report a
+// component as busy for work it was not doing.
+func (e *engine) handOn(id string, req *request, transit time.Duration) {
+	if transit == 0 {
+		e.admit(id, req)
+		return
+	}
+	e.schedule(event{at: e.clock + transit, kind: inTransit, station: id, req: req})
 }
 
 // accrue books the connection-time each of a component's servers has spent

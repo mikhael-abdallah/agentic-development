@@ -105,7 +105,7 @@ func (t Topology) validateNodes() error {
 // validateEdges checks that every edge connects two real components, in a
 // direction requests can actually travel.
 func (t Topology) validateEdges(index map[string]Node) error {
-	seen := make(map[Edge]bool, len(t.Edges))
+	seen := make(map[link]bool, len(t.Edges))
 	for _, e := range t.Edges {
 		from, ok := index[e.From]
 		if !ok {
@@ -118,10 +118,13 @@ func (t Topology) validateEdges(index map[string]Node) error {
 		if e.From == e.To {
 			return fmt.Errorf("%w: %q sends to itself", ErrEdgeShape, e.From)
 		}
-		if seen[e] {
+		if seen[e.link()] {
 			return fmt.Errorf("%w: %q to %q appears twice", ErrEdgeShape, e.From, e.To)
 		}
-		seen[e] = true
+		seen[e.link()] = true
+		if err := e.validate(); err != nil {
+			return err
+		}
 		if to.Kind == KindClient {
 			return fmt.Errorf("%w: %q sends to it", ErrClientInbound, e.From)
 		}
