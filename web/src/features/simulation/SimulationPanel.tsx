@@ -3,10 +3,11 @@
 import { useState } from "react";
 
 import { Numbers } from "@/components/Field";
+import { Operations } from "@/features/simulation/Operations";
 import { Results } from "@/features/simulation/Results";
 import { type SimulationResult, simulate } from "@/features/simulation/client";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
-import { whyNotRun } from "@/lib/design";
+import { whyNotOffer, whyNotRun } from "@/lib/design";
 import { type Topology, type Workload, defaultWorkload } from "@/lib/topology";
 
 interface SimulationPanelProps {
@@ -28,7 +29,10 @@ export function SimulationPanel({ topology }: SimulationPanelProps) {
   // What stops this design being run at all, asked before the button rather
   // than discovered by pressing it. The engine checks the same things and more
   // on every run; this is the subset a design can drift into while it is drawn.
-  const blocked = whyNotRun(topology);
+  // The design and the load are two ways for a run to be impossible, and the
+  // design is asked first: a load nobody can put anywhere is the less useful
+  // thing to be told about.
+  const blocked = whyNotRun(topology) ?? whyNotOffer(workload);
 
   const start = () => {
     setRun({ status: "running" });
@@ -53,6 +57,12 @@ export function SimulationPanel({ topology }: SimulationPanelProps) {
       <p className="panel__scope">Whole design</p>
       <h2 className="panel__title">The load to put through it</h2>
       <Numbers subject={workload} fields={WORKLOAD_FIELDS} onChange={setWorkload} />
+      <Operations
+        operations={workload.operations}
+        onChange={(operations) => {
+          setWorkload({ ...workload, operations });
+        }}
+      />
       <button
         type="button"
         className="simulation__run"

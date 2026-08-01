@@ -17,9 +17,17 @@ import {
   selectNode,
   uniqueId,
   whyNotConnect,
+  whyNotOffer,
   whyNotRun,
 } from "@/lib/design";
-import { type DesignNode, type Scenario, newNode } from "@/lib/topology";
+import {
+  type DesignNode,
+  type Operation,
+  type Scenario,
+  type Workload,
+  defaultWorkload,
+  newNode,
+} from "@/lib/topology";
 
 const SOMEWHERE = { x: 100, y: 100 };
 
@@ -584,5 +592,88 @@ describe("pasteNode", () => {
     first.service.instances = 99;
     expect(second.service.instances).not.toBe(99);
     expect(source.service?.instances).not.toBe(99);
+  });
+});
+
+// The twin of whyNotRun for the other half of a simulation. A design can be
+// drawn wrong and so can the traffic put through it, and both are better read
+// beside the Run button than discovered by pressing it. Every rule here is one
+// the engine enforces too — see validateOperations in workload.go — so what
+// this buys is when the refusal arrives, not whether.
+describe("whyNotOffer", () => {
+  function offering(operations: Operation[]): Workload {
+    return { ...defaultWorkload(), operations };
+  }
+
+  it("is happy with the load a new design starts under", () => {
+    expect(whyNotOffer(defaultWorkload())).toBeNull();
+  });
+
+  it("refuses a load that asks for nothing", () => {
+    expect(whyNotOffer(offering([]))).toMatch(/no operations/);
+  });
+
+  it("refuses an operation with no name", () => {
+    const load = offering([{ name: "", kind: "read", share: 1 }]);
+    expect(whyNotOffer(load)).toMatch(/no name/);
+  });
+
+  // The results are broken down by name, so two of one name would be one line
+  // covering both — the operations would be there and still not distinguish
+  // anything, which is the only reason they exist.
+  it("refuses two operations of the same name", () => {
+    const load = offering([
+      { name: "resolve", kind: "read", share: 0.5 },
+      { name: "resolve", kind: "write", share: 0.5 },
+    ]);
+    expect(whyNotOffer(load)).toMatch(/Two operations are called resolve/);
+  });
+
+  it("refuses an operation that never happens", () => {
+    const load = offering([
+      { name: "resolve", kind: "read", share: 1 },
+      { name: "shorten", kind: "write", share: 0 },
+    ]);
+    expect(whyNotOffer(load)).toMatch(/shorten is set to none of the traffic/);
+  });
+
+  it("refuses shares that leave traffic unaccounted for", () => {
+    const load = offering([
+      { name: "resolve", kind: "read", share: 0.5 },
+      { name: "shorten", kind: "write", share: 0.2 },
+    ]);
+    expect(whyNotOffer(load)).toMatch(/come to 70%/);
+  });
+
+  // A refusal that named the number it was asking for. The shares are typed
+  // rather than dragged, so three rows of 33.4% reach 100.2% — which rounded to
+  // "come to 100%, adjust them until they come to 100%".
+  it("does not report a refused total as a hundred", () => {
+    const load = offering([
+      { name: "a", kind: "read", share: 0.334 },
+      { name: "b", kind: "read", share: 0.334 },
+      { name: "c", kind: "write", share: 0.334 },
+    ]);
+    expect(whyNotOffer(load)).toMatch(/come to 100.2%/);
+  });
+
+  it("refuses shares that account for more traffic than arrives", () => {
+    const load = offering([
+      { name: "resolve", kind: "read", share: 0.9 },
+      { name: "shorten", kind: "write", share: 0.9 },
+    ]);
+    expect(whyNotOffer(load)).toMatch(/come to 180%/);
+  });
+
+  // Three tenths do not add to one in binary floating point, and refusing that
+  // would be refusing arithmetic the user did correctly.
+  it("accepts shares that only add up to one in decimal", () => {
+    const load = offering([
+      { name: "a", kind: "read", share: 0.7 },
+      { name: "b", kind: "read", share: 0.2 },
+      { name: "c", kind: "write", share: 0.1 },
+    ]);
+    expect(load.operations.reduce((sum, o) => sum + o.share, 0)).not.toBe(1);
+    expect(whyNotOffer(load)).toBeNull();
   });
 });

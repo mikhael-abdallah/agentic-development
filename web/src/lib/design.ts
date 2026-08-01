@@ -1,9 +1,11 @@
 import { kindLabel } from "@/lib/describe";
+import { formatShare } from "@/lib/format";
 import {
   type DesignNode,
   type NodeKind,
   type Scenario,
   type Topology,
+  type Workload,
   newNode,
   whyNotSend,
 } from "@/lib/topology";
@@ -350,6 +352,51 @@ export function whyNotRun(topology: Topology): string | null {
   const stranded = topology.nodes.find((node) => !reached.has(node.id));
   if (stranded !== undefined) {
     return `Nothing reaches ${stranded.label ?? kindLabel(stranded.kind)}. A component the client cannot get to takes no part in the run, and its absence from the results would read as "not a bottleneck" rather than "never wired up".`;
+  }
+  return null;
+}
+
+/**
+ * How far the operation shares may be from adding to one.
+ *
+ * Not zero, because 0.7 + 0.2 + 0.1 is not 1 in binary floating point and
+ * refusing that would be refusing arithmetic the user did correctly. Mirrors
+ * `shareSlack` in engine/internal/model/workload.go, which is the authority.
+ */
+const SHARE_SLACK = 1e-9;
+
+/**
+ * Why this load cannot be offered, or null if it can.
+ *
+ * The twin of `whyNotRun` for the other half of a simulation. A design can be
+ * drawn wrong and so can the traffic put through it, and both refusals are
+ * better read beside the button than after pressing it.
+ *
+ * Shares that do not add to one are refused rather than normalised. Normalising
+ * would silently change numbers the user typed: someone who wrote 60 and 30 and
+ * meant a tenth of the traffic to be something they had not added yet would get
+ * a run about a workload they did not describe, reported as though they had.
+ */
+export function whyNotOffer(workload: Workload): string | null {
+  if (workload.operations.length === 0) {
+    return "This load has no operations, so there is nothing for the design to be asked to do. Add one and say whether it reads or writes.";
+  }
+  const seen = new Set<string>();
+  for (const operation of workload.operations) {
+    if (operation.name === "") {
+      return "An operation has no name. The name has no effect on the run — it is how the results tell one operation from another, which is the whole point of naming them.";
+    }
+    if (seen.has(operation.name)) {
+      return `Two operations are called ${operation.name}. The results are broken down by name, so two of them would be one line covering both.`;
+    }
+    seen.add(operation.name);
+    if (operation.share <= 0) {
+      return `${operation.name} is set to none of the traffic, so it never happens. Give it a share, or take it off the list.`;
+    }
+  }
+  const total = workload.operations.reduce((sum, operation) => sum + operation.share, 0);
+  if (Math.abs(total - 1) > SHARE_SLACK) {
+    return `The operation shares come to ${formatShare(total)}%, and a run divides all of its traffic between them. Adjust them until they come to 100%.`;
   }
   return null;
 }
