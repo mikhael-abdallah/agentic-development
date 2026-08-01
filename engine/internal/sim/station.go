@@ -22,6 +22,13 @@ type station struct {
 	// next is where a served request goes. Empty means it completes here.
 	// More than one entry means something has to choose — see route.
 	next []string
+	// hop is what the connection to each of those costs a request in flight,
+	// keyed by where it goes. Empty when every connection out of here is free,
+	// which is every design that has not said otherwise.
+	//
+	// In flight and not held: a request crossing a slow link occupies neither
+	// component, so this is never added to a hold time. See handOn.
+	hop map[string]time.Duration
 
 	// hold is how long the component keeps a request and holdWrite what it
 	// costs when the request is a write; sampled says whether that time is
@@ -99,16 +106,29 @@ type station struct {
 	absorbsWrit bool
 }
 
-func newStation(n model.Node, downstream []string) (*station, error) {
+// hopCosts converts the connection costs out of a component into the clock's
+// own unit, once, rather than per request.
+func hopCosts(hops map[string]model.Millis) map[string]time.Duration {
+	if len(hops) == 0 {
+		return nil
+	}
+	costs := make(map[string]time.Duration, len(hops))
+	for to, cost := range hops {
+		costs[to] = cost.Duration()
+	}
+	return costs
+}
+
+func newStation(n model.Node, downstream []string, hops map[string]model.Millis) (*station, error) {
 	switch n.Kind {
 	case model.KindLoadBalancer:
-		return newBalancer(n, downstream)
+		return newBalancer(n, downstream, hopCosts(hops))
 	case model.KindService:
-		return newService(n, downstream)
+		return newService(n, downstream, hopCosts(hops))
 	case model.KindCache:
-		return newCache(n, downstream)
+		return newCache(n, downstream, hopCosts(hops))
 	case model.KindDatabase:
-		return newDatabase(n, downstream)
+		return newDatabase(n, downstream, hopCosts(hops))
 	case model.KindClient:
 		return nil, fmt.Errorf("%w: %s (%q)", ErrNotAStation, n.Kind, n.ID)
 	}
@@ -120,7 +140,7 @@ func newStation(n model.Node, downstream []string) (*station, error) {
 	return nil, fmt.Errorf("%w: %s (%q)", ErrNotAStation, n.Kind, n.ID)
 }
 
-func newBalancer(n model.Node, downstream []string) (*station, error) {
+func newBalancer(n model.Node, downstream []string, hop map[string]time.Duration) (*station, error) {
 	if len(downstream) == 0 {
 		return nil, fmt.Errorf("%w: %q sends to nothing", ErrNoTargets, n.ID)
 	}
@@ -128,6 +148,7 @@ func newBalancer(n model.Node, downstream []string) (*station, error) {
 	return &station{
 		id:        n.ID,
 		next:      downstream,
+		hop:       hop,
 		hold:      overhead,
 		holdWrite: overhead,
 		slots:     make([]int, 1),
@@ -136,7 +157,7 @@ func newBalancer(n model.Node, downstream []string) (*station, error) {
 	}, nil
 }
 
-func newService(n model.Node, downstream []string) (*station, error) {
+func newService(n model.Node, downstream []string, hop map[string]time.Duration) (*station, error) {
 	if len(downstream) > 1 {
 		return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
 	}
@@ -149,6 +170,7 @@ func newService(n model.Node, downstream []string) (*station, error) {
 	return &station{
 		id:        n.ID,
 		next:      downstream,
+		hop:       hop,
 		hold:      mean,
 		holdWrite: mean,
 		perCall:   endpointCosts(n.Service.Endpoints),
@@ -176,7 +198,7 @@ func endpointCosts(endpoints []model.Endpoint) map[string]time.Duration {
 	return costs
 }
 
-func newCache(n model.Node, downstream []string) (*station, error) {
+func newCache(n model.Node, downstream []string, hop map[string]time.Duration) (*station, error) {
 	// A cache is a lookup, not a queue: it holds every request for the same
 	// moment and holds none of them back. What it decides is not how long a
 	// request waits but whether the request goes any further.
@@ -197,6 +219,7 @@ func newCache(n model.Node, downstream []string) (*station, error) {
 	}
 	return &station{
 		id:          n.ID,
+		hop:         hop,
 		next:        downstream,
 		hold:        lookup,
 		holdWrite:   write,
@@ -208,7 +231,7 @@ func newCache(n model.Node, downstream []string) (*station, error) {
 	}, nil
 }
 
-func newDatabase(n model.Node, downstream []string) (*station, error) {
+func newDatabase(n model.Node, downstream []string, hop map[string]time.Duration) (*station, error) {
 	if len(downstream) > 1 {
 		return nil, fmt.Errorf("%w: %q sends to %d", ErrFanOut, n.ID, len(downstream))
 	}
@@ -219,6 +242,7 @@ func newDatabase(n model.Node, downstream []string) (*station, error) {
 	return &station{
 		id:        n.ID,
 		next:      downstream,
+		hop:       hop,
 		hold:      n.Database.MeanRead.Duration(),
 		holdWrite: n.Database.MeanWrite.Duration(),
 		rowCost:   rowCosts(*n.Database),

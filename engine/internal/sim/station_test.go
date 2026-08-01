@@ -86,7 +86,7 @@ func TestAnUnlimitedComponentAlwaysHasRoom(t *testing.T) {
 // and an invariant with no test is a comment.
 func TestAClientIsNotAStation(t *testing.T) {
 	t.Parallel()
-	_, err := newStation(model.Node{ID: "client", Kind: model.KindClient}, nil)
+	_, err := newStation(model.Node{ID: "client", Kind: model.KindClient}, nil, nil)
 	if !errors.Is(err, ErrNotAStation) {
 		t.Errorf("newStation() for a client = %v, want ErrNotAStation", err)
 	}

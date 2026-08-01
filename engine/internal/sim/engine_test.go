@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/model"
 	"github.com/mikhael-abdallah/agentic-development/engine/internal/sim"
@@ -501,5 +502,166 @@ func TestAnEndpointNothingCallsIsAllowedAndDoesNothing(t *testing.T) {
 	}
 	if !same(plain, spare) {
 		t.Error("an endpoint no traffic reaches changed the run")
+	}
+}
+
+// carrying is a chain whose one connection into the service costs what it is
+// told, so a case below changes the link and nothing else.
+func carrying(perCall model.Millis, transport string) model.Topology {
+	return costing("in", perCall, transport)
+}
+
+// costing is the same, on whichever connection leaves the named component.
+func costing(from string, perCall model.Millis, transport string) model.Topology {
+	design := chain(4, 5, 0)
+	for i := range design.Edges {
+		if design.Edges[i].From == from {
+			design.Edges[i].PerCall = perCall
+			design.Edges[i].Transport = transport
+		}
+	}
+	return design
+}
+
+// What a connection's cost is for. Every request crosses this link, so making
+// it slower makes every request slower by about that much.
+func TestAConnectionAddsItsCostToEveryRequestCrossingIt(t *testing.T) {
+	t.Parallel()
+	w := load(100, 51)
+	free, err := sim.Run(carrying(0, ""), w)
+	if err != nil {
+		t.Fatalf("Run() over a free connection: %v", err)
+	}
+	slow, err := sim.Run(carrying(20, ""), w)
+	if err != nil {
+		t.Fatalf("Run() over a slow one: %v", err)
+	}
+	added := slow.Latency.Mean - free.Latency.Mean
+	// Deterministic and added rather than drawn, so this is close to exact
+	// rather than close on average — a tolerance wide enough to hide a factor
+	// of two would not be testing the arithmetic.
+	if added < 19*time.Millisecond || added > 21*time.Millisecond {
+		t.Errorf("a 20 ms connection added %v to the mean, want about 20 ms", added)
+	}
+}
+
+// And what it is not. Time in flight holds no server at either end, so a slow
+// link must not make the components it joins look busy — a component reported
+// as saturated by a network it is waiting on is the wrong component to fix.
+func TestTimeInFlightDoesNotOccupyEitherComponent(t *testing.T) {
+	t.Parallel()
+	w := load(100, 52)
+	free, err := sim.Run(carrying(0, ""), w)
+	if err != nil {
+		t.Fatalf("Run() over a free connection: %v", err)
+	}
+	slow, err := sim.Run(carrying(50, ""), w)
+	if err != nil {
+		t.Fatalf("Run() over a slow one: %v", err)
+	}
+	before, after := free.Nodes["api"].Utilization, slow.Nodes["api"].Utilization
+	if before == 0 {
+		t.Fatal("the service was idle in the free run, so this compares nothing")
+	}
+	// The same requests still arrive and still take the same time to serve;
+	// they just arrive later. Utilization is service time over the window, so
+	// it barely moves — where charging the flight to a component would have
+	// pushed it up by half.
+	if ratio := after / before; ratio < 0.9 || ratio > 1.1 {
+		t.Errorf("a 50 ms connection moved the service's utilization from %g to %g",
+			before, after)
+	}
+}
+
+// A transport is a label. Two designs differing only in what their connections
+// are called have to produce identical results, or the name is quietly a
+// parameter — which is the thing this field promises it is not.
+func TestNamingATransportChangesNothing(t *testing.T) {
+	t.Parallel()
+	w := load(100, 53)
+	plain, err := sim.Run(carrying(2, ""), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	named, err := sim.Run(carrying(2, "gRPC"), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if !same(plain, named) {
+		t.Error("naming the transport changed the result, so the name is not just a name")
+	}
+}
+
+// A connection that costs nothing hands the request straight on rather than
+// scheduling an event at the current instant, which would go into the heap
+// behind everything already queued there and reorder a design that named no
+// transport at all.
+//
+// An identical Result rather than a similar one: this is the property that
+// keeps every existing design — and the figures pinned in scenario_test.go —
+// exactly where they were.
+func TestAFreeConnectionIsNotAnEvent(t *testing.T) {
+	t.Parallel()
+	w := load(200, 54)
+	plain, err := sim.Run(chain(4, 5, 0), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	zeroed, err := sim.Run(carrying(0, "HTTP/1.1"), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if !same(plain, zeroed) {
+		t.Error("a connection costing nothing changed the run")
+	}
+}
+
+// The first connection in a design is the one nothing else would charge. The
+// client is where load comes from rather than a component load passes through,
+// so it is not a station and has no hop map — and a cost declared on its
+// connection validated and was then silently dropped, the run reporting a
+// latency short by exactly that much with nothing to say so.
+//
+// That is the failure this engine says it exists to refuse, and it was found in
+// review rather than by a test, so here is the test.
+func TestTheClientsOwnConnectionCostsWhatItSays(t *testing.T) {
+	t.Parallel()
+	w := load(100, 55)
+	free, err := sim.Run(costing("client", 0, ""), w)
+	if err != nil {
+		t.Fatalf("Run() over a free connection: %v", err)
+	}
+	slow, err := sim.Run(costing("client", 20, ""), w)
+	if err != nil {
+		t.Fatalf("Run() over a slow one: %v", err)
+	}
+	added := slow.Latency.Mean - free.Latency.Mean
+	if added < 19*time.Millisecond || added > 21*time.Millisecond {
+		t.Errorf("a 20 ms connection out of the client added %v to the mean, want about 20 ms",
+			added)
+	}
+}
+
+// And the property that says the fix is complete rather than merely present:
+// the same physical delay produces the same numbers wherever in the chain it
+// sits. Every request crosses both connections exactly once, so twenty
+// milliseconds on either is twenty milliseconds either way — and a design that
+// answered differently depending on which link carried the cost would be
+// reporting where a delay was written down rather than what it did.
+func TestWhereAConnectionCostSitsDoesNotChangeWhatItCosts(t *testing.T) {
+	t.Parallel()
+	w := load(100, 56)
+	onTheClient, err := sim.Run(costing("client", 20, ""), w)
+	if err != nil {
+		t.Fatalf("Run() with the cost on the client's connection: %v", err)
+	}
+	onTheBalancer, err := sim.Run(costing("in", 20, ""), w)
+	if err != nil {
+		t.Fatalf("Run() with it one hop later: %v", err)
+	}
+	gap := onTheClient.Latency.Mean - onTheBalancer.Latency.Mean
+	if gap < -time.Millisecond || gap > time.Millisecond {
+		t.Errorf("the same 20 ms cost gave %v on the client's connection and %v one hop "+
+			"later", onTheClient.Latency.Mean, onTheBalancer.Latency.Mean)
 	}
 }

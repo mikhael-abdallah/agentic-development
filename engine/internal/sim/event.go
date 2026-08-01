@@ -13,6 +13,11 @@ const (
 	arrival eventKind = iota
 	// serviceDone: a component has finished with a request and hands it on.
 	serviceDone
+	// inTransit: a request is crossing a connection that costs something, and
+	// arrives at the far end when this fires. It holds no server at either
+	// end — which is the whole reason it is an event rather than time added to
+	// a hold.
+	inTransit
 )
 
 // event is something that happens at a point in simulated time.

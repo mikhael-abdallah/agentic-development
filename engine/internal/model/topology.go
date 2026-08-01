@@ -27,6 +27,47 @@ type Node struct {
 type Edge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
+	// Transport names what carries requests along this connection — "HTTP/1.1",
+	// "gRPC", "a queue".
+	//
+	// It has no effect on the simulation, and that is stated rather than
+	// hidden. The alternative was a list of protocols with a latency for each,
+	// and this engine has no honest source for those numbers: what gRPC costs
+	// against HTTP depends on the payload, the language, the proxy in between
+	// and the machine, and a built-in table of plausible figures would be an
+	// invention every result then rested on. PerCall below is where a number
+	// that moves the answer goes, and it is the user's number.
+	//
+	// A design is also a thing you show people, and "this hop is gRPC" is worth
+	// writing down. Node.Label has exactly this status and says so in its own
+	// documentation.
+	Transport string `json:"transport,omitempty"`
+	// PerCall is what this connection adds to every request that crosses it.
+	//
+	// Added rather than drawn, so zero is a real answer: a connection inside
+	// one datacentre may well cost nothing this simulation can measure. It is
+	// time in flight and occupies neither component — a request crossing a slow
+	// link is not holding a server at either end, and charging it to one would
+	// report a component as busy for work it was not doing.
+	PerCall Millis `json:"perCallMs,omitempty"`
+}
+
+// link is an edge's two endpoints, without what is written on it.
+//
+// The duplicate check below is about the connection rather than its properties:
+// `a → b` twice is one connection written twice, whatever transport each copy
+// names. Comparing whole Edge values got that right only while an edge had
+// exactly two fields, and would have started quietly accepting a duplicate the
+// moment a third arrived.
+type link struct{ from, to string }
+
+func (e Edge) link() link { return link{from: e.From, to: e.To} }
+
+func (e Edge) validate() error {
+	if err := nonNegative("perCallMs of "+e.From+" to "+e.To, float64(e.PerCall)); err != nil {
+		return err
+	}
+	return representable("perCallMs of "+e.From+" to "+e.To, float64(e.PerCall))
 }
 
 // Topology is a design: the components and how requests flow between them.
@@ -66,6 +107,27 @@ func (t Topology) Downstream(id string) []string {
 		}
 	}
 	return out
+}
+
+// HopsFrom is what each connection out of this component adds to a request
+// crossing it, keyed by where it goes.
+//
+// Beside Downstream rather than folded into it, because they answer different
+// questions and only one of them is needed to decide where a request goes. The
+// map is nil when nothing leaves this component, and a nil map reads as zero —
+// so a design where no connection costs anything asks for nothing extra.
+func (t Topology) HopsFrom(id string) map[string]Millis {
+	var hops map[string]Millis
+	for _, e := range t.Edges {
+		if e.From != id || e.PerCall == 0 {
+			continue
+		}
+		if hops == nil {
+			hops = make(map[string]Millis, len(t.Edges))
+		}
+		hops[e.To] = e.PerCall
+	}
+	return hops
 }
 
 // paramBlock pairs a kind with whether this node carries its parameters.

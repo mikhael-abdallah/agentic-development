@@ -396,3 +396,118 @@ func TestEveryKindCanBeCalledExceptTheClient(t *testing.T) {
 		}
 	}
 }
+
+// A connection may say what carries it and what that costs.
+func TestAConnectionMayNameItsTransport(t *testing.T) {
+	t.Parallel()
+	design := model.Topology{
+		Nodes: []model.Node{
+			{ID: "client", Kind: model.KindClient},
+			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{Instances: 1, MeanService: 1}},
+		},
+		Edges: []model.Edge{{From: "client", To: "api", Transport: "HTTP/1.1", PerCall: 0.4}},
+	}
+	if err := design.Validate(); err != nil {
+		t.Errorf("Validate() on a named connection = %v, want nil", err)
+	}
+}
+
+// Added rather than drawn, so zero is a real answer: a connection inside one
+// datacentre may well cost nothing this simulation can measure.
+func TestAConnectionMayCostNothing(t *testing.T) {
+	t.Parallel()
+	design := model.Topology{
+		Nodes: []model.Node{
+			{ID: "client", Kind: model.KindClient},
+			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{Instances: 1, MeanService: 1}},
+		},
+		Edges: []model.Edge{{From: "client", To: "api", PerCall: 0}},
+	}
+	if err := design.Validate(); err != nil {
+		t.Errorf("Validate() on a free connection = %v, want nil", err)
+	}
+}
+
+func TestABrokenConnectionCostIsRefused(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		perCall model.Millis
+	}{
+		{"a negative cost", -1},
+		{"a cost longer than the clock can hold", model.Millis(1e300)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			design := model.Topology{
+				Nodes: []model.Node{
+					{ID: "client", Kind: model.KindClient},
+					{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{Instances: 1, MeanService: 1}},
+				},
+				Edges: []model.Edge{{From: "client", To: "api", PerCall: tt.perCall}},
+			}
+			if err := design.Validate(); !errors.Is(err, model.ErrParamRange) {
+				t.Errorf("Validate() with %s = %v, want model.ErrParamRange", tt.name, err)
+			}
+		})
+	}
+}
+
+// The same connection written twice is one connection written twice, whatever
+// each copy names. Comparing whole model.Edge values got this right only while an
+// edge had exactly two fields — the duplicate check is about the endpoints.
+func TestTwoConnectionsBetweenThePairAreRefusedHoweverTheyAreLabelled(t *testing.T) {
+	t.Parallel()
+	design := model.Topology{
+		Nodes: []model.Node{
+			{ID: "client", Kind: model.KindClient},
+			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{Instances: 1, MeanService: 1}},
+		},
+		Edges: []model.Edge{
+			{From: "client", To: "api", Transport: "HTTP/1.1"},
+			{From: "client", To: "api", Transport: "gRPC", PerCall: 5},
+		},
+	}
+	if err := design.Validate(); !errors.Is(err, model.ErrEdgeShape) {
+		t.Errorf("Validate() on two differently labelled copies of one connection = %v, "+
+			"want model.ErrEdgeShape", err)
+	}
+}
+
+// HopsFrom answers a different question from Downstream — how much each
+// connection costs rather than where it goes — and the map it returns is what
+// the engine charges a request in flight.
+func TestHopsFromNamesOnlyTheConnectionsThatCost(t *testing.T) {
+	t.Parallel()
+	design := model.Topology{
+		Edges: []model.Edge{
+			{From: "lb", To: "api", PerCall: 0.4},
+			{From: "lb", To: "spare"},
+			{From: "api", To: "db", PerCall: 2},
+		},
+	}
+	hops := design.HopsFrom("lb")
+	// `spare` is absent rather than present at zero: a nil or missing entry
+	// reads as zero downstream, and listing every free connection would be
+	// storing the absence of a cost.
+	if len(hops) != 1 || hops["api"] != 0.4 {
+		t.Errorf("HopsFrom(lb) = %v, want just the connection that costs something", hops)
+	}
+	if hops["db"] != 0 {
+		t.Errorf("HopsFrom(lb) named a connection out of another component: %v", hops)
+	}
+}
+
+// Nil rather than an empty map, so a design where no connection costs anything
+// allocates nothing and reads as zero everywhere it is used.
+func TestHopsFromIsNothingWhenNoConnectionCosts(t *testing.T) {
+	t.Parallel()
+	design := model.Topology{Edges: []model.Edge{{From: "lb", To: "api"}}}
+	if hops := design.HopsFrom("lb"); hops != nil {
+		t.Errorf("HopsFrom(lb) = %v, want nil for a design with no costs in it", hops)
+	}
+	if hops := design.HopsFrom("nowhere"); hops != nil {
+		t.Errorf("HopsFrom(nowhere) = %v, want nil", hops)
+	}
+}

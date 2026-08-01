@@ -90,13 +90,24 @@ const paramFieldsOf = new Map<string, string[]>(
   Object.entries(PARAM_FIELDS).map(([key, fields]) => [key, sortedKeys(fields)]),
 );
 
+/**
+ * The fields this side declares, minus the optional ones the design did not use.
+ *
+ * The engine leaves an empty optional field off the wire entirely, so an exact
+ * key comparison would force every preset to declare every optional field just
+ * to keep the test honest. What the comparison still catches is both failures
+ * worth catching: a key in the JSON this side does not know, and a required
+ * field this side declares that the engine does not send.
+ */
+function expectedFields(declared: string[], present: string[]): string[] {
+  const has = new Set(present);
+  return declared.filter((field) => has.has(field) || !OMITTED_WHEN_EMPTY.includes(field));
+}
+
 /** What a kind's parameters should name, given which of the optional fields
  *  this particular design turned out to use. */
 function expectedParamFields(key: string, present: string[]): string[] {
-  const has = new Set(present);
-  return (paramFieldsOf.get(key) ?? []).filter(
-    (field) => has.has(field) || !OMITTED_WHEN_EMPTY.includes(field),
-  );
+  return expectedFields(paramFieldsOf.get(key) ?? [], present);
 }
 
 /** Each component's parameter fields beside the ones this side expects, paired
@@ -141,10 +152,16 @@ describe("the mirrored contract", () => {
     );
   });
 
+  // Key sets exactly, minus the optional fields this design does not use — the
+  // same rule the parameter check follows. A connection that says nothing about
+  // its transport carries no key for it, and requiring one would mean every
+  // preset had to name a transport to keep this test honest.
   it("names the same edge fields", () => {
-    const edges = (readPreset().topology as { edges: unknown[] }).edges;
+    const edges = (readPreset().topology as { edges: UnknownRecord[] }).edges;
     expect(edges.length).toBeGreaterThan(0);
-    expect(edges.map(sortedKeys)).toEqual(edges.map(() => sortedKeys(EDGE_FIELDS)));
+    expect(edges.map(sortedKeys)).toEqual(
+      edges.map((edge) => expectedFields(sortedKeys(EDGE_FIELDS), sortedKeys(edge))),
+    );
   });
 
   it("knows every component kind the preset uses", () => {
