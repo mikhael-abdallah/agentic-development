@@ -238,7 +238,7 @@ func TestADurationTooLongForTheClockIsRejected(t *testing.T) {
 func TestARunLongerThanTheClockIsRejected(t *testing.T) {
 	t.Parallel()
 	w := model.Workload{
-		RateRPS: 1, ReadFraction: 1, Duration: 1e13, Seed: 1, WarmupFraction: 0,
+		RateRPS: 1, Operations: asking(1), Duration: 1e13, Seed: 1, WarmupFraction: 0,
 	}
 	if err := w.Validate(); !errors.Is(err, model.ErrWorkload) {
 		t.Errorf("Validate() with a 317-year run = %v, want ErrWorkload", err)

@@ -3,11 +3,23 @@ import { describe, expect, it } from "vitest";
 import { WORKLOAD_FIELDS } from "@/features/simulation/fields";
 import { defaultWorkload } from "@/lib/topology";
 
+/**
+ * The parts of the load that are not a number, and so cannot be a row in this
+ * table.
+ *
+ * `operations` is a list of named things rather than a value with a spinner.
+ * Listed here rather than filtered out by type, so that adding another such
+ * field is a decision someone takes in this file instead of a field quietly
+ * dropping out of a count that used to guard it.
+ */
+const NOT_A_NUMBER = ["operations"];
+
 describe("WORKLOAD_FIELDS", () => {
-  // A part of the load with no field is one the engine reads and nobody can
+  // A part of the load with no control is one the engine reads and nobody can
   // set: it would keep its default for the life of the design.
   it("covers every part of the load the engine reads", () => {
-    expect(WORKLOAD_FIELDS).toHaveLength(Object.keys(defaultWorkload()).length);
+    const covered = [...WORKLOAD_FIELDS.map((field) => field.label), ...NOT_A_NUMBER];
+    expect(covered).toHaveLength(Object.keys(defaultWorkload()).length);
   });
 
   it("reads back what it writes, and disturbs nothing else", () => {
@@ -30,7 +42,5 @@ describe("WORKLOAD_FIELDS", () => {
     expect(named("Arrival rate")?.min).toBeGreaterThan(0);
     expect(named("Duration")?.min).toBeGreaterThan(0);
     expect(named("Warmup")?.max).toBeLessThan(1);
-    expect(named("Read fraction")?.min).toBe(0);
-    expect(named("Read fraction")?.max).toBe(1);
   });
 });

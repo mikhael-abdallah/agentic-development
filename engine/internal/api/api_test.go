@@ -24,7 +24,7 @@ const design = `{
     "edges": [{"from": "client", "to": "api"}]
   },
   "workload": {
-    "rateRps": 100, "readFraction": 1, "durationMs": 5000,
+    "rateRps": 100, "operations": [{"name": "read", "kind": "read", "share": 1}], "durationMs": 5000,
     "seed": 7, "warmupFraction": 0.2
   }
 }`
@@ -159,7 +159,7 @@ func TestBadRequestsAreRefusedWithAReason(t *testing.T) {
 	}{
 		{"not JSON at all", `{"topology":`, http.StatusBadRequest},
 		{"an empty design", `{"topology": {}, "workload":
-			{"rateRps": 10, "readFraction": 1, "durationMs": 1000,
+			{"rateRps": 10, "operations": [{"name": "read", "kind": "read", "share": 1}], "durationMs": 1000,
 			 "seed": 1, "warmupFraction": 0}}`, http.StatusBadRequest},
 		{"a workload with no arrivals", strings.Replace(design,
 			`"rateRps": 100`, `"rateRps": 0`, 1), http.StatusBadRequest},

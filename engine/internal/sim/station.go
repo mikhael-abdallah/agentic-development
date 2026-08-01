@@ -213,7 +213,7 @@ func (st *station) seat(req *request) int {
 	if st.pool == 0 {
 		return 0
 	}
-	if !req.read {
+	if !req.read() {
 		if st.slots[0] < st.pool {
 			return 0
 		}

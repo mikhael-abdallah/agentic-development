@@ -83,9 +83,44 @@ export interface Topology {
   edges: DesignEdge[];
 }
 
+/**
+ * What an operation does to the data behind a design. Mirrors OperationKind in
+ * engine/internal/model/workload.go.
+ *
+ * Two, and not because systems only do two things. This is the distinction the
+ * simulation can act on: a read may be answered by a cache or by a replica, and
+ * a write may not. Anything finer is either invisible to the model or is
+ * already the operation's own service time.
+ */
+export const OPERATION_KINDS = ["read", "write"] as const;
+// Not exported until something outside this file needs to name it. The list
+// above is what a caller checks a value against, and `Operation` below carries
+// the type without anyone having to spell it.
+type OperationKind = (typeof OPERATION_KINDS)[number];
+
+/**
+ * One thing a design is asked to do, and how much of the traffic asks for it.
+ *
+ * A URL shortener resolves short codes and shortens long ones, and those are
+ * not the same request: one is answered from a cache almost every time and the
+ * other has to reach the store. Saying so is the difference between a design
+ * that reads as "browser, balancer, service, cache, database" and one that says
+ * what is actually flowing through it.
+ *
+ * The name has no effect on the run. It is what the canvas shows and what
+ * results are broken down by; the kind and the share are what the engine uses.
+ */
+export interface Operation {
+  name: string;
+  kind: OperationKind;
+  share: number;
+}
+
 export interface Workload {
   rateRps: number;
-  readFraction: number;
+  /** What the arrivals are asking for, and in what proportion. The shares add
+   *  up to one, which the engine checks on every run. */
+  operations: Operation[];
   durationMs: number;
   seed: number;
   warmupFraction: number;
@@ -237,11 +272,17 @@ export const EDGE_FIELDS = { from: true, to: true } satisfies Fields<DesignEdge>
 
 export const WORKLOAD_FIELDS = {
   rateRps: true,
-  readFraction: true,
+  operations: true,
   durationMs: true,
   seed: true,
   warmupFraction: true,
 } satisfies Fields<Workload>;
+
+export const OPERATION_FIELDS = {
+  name: true,
+  kind: true,
+  share: true,
+} satisfies Fields<Operation>;
 
 export const SCENARIO_FIELDS = {
   id: true,
@@ -307,8 +348,26 @@ export function newNode(kind: NodeKind, id: string, label?: string): DesignNode 
   }
 }
 
-/** The load a new design starts under: enough traffic to show a queue, short
- *  enough to answer while someone is still looking at the screen. */
+/**
+ * The load a new design starts under: enough traffic to show a queue, short
+ * enough to answer while someone is still looking at the screen.
+ *
+ * Two operations rather than one, because one would say nothing. A workload
+ * that only reads never touches a write path, and a new design would show a
+ * cache and a database behaving as though writes did not exist — which is the
+ * shape of the question this whole model exists to make askable. The names are
+ * deliberately generic: what a design's operations are called is the first
+ * thing worth changing, and a suggestion is easier to edit than a blank.
+ */
 export function defaultWorkload(): Workload {
-  return { rateRps: 300, readFraction: 0.95, durationMs: 60_000, seed: 1, warmupFraction: 0.2 };
+  return {
+    rateRps: 300,
+    operations: [
+      { name: "read", kind: "read", share: 0.95 },
+      { name: "write", kind: "write", share: 0.05 },
+    ],
+    durationMs: 60_000,
+    seed: 1,
+    warmupFraction: 0.2,
+  };
 }

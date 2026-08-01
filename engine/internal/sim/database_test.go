@@ -120,7 +120,7 @@ func TestAStoredDesignStillRepeats(t *testing.T) {
 	t.Parallel()
 	design := stored(2, 3, 4, 30)
 	w := load(120, 35)
-	w.ReadFraction = 0.7
+	w.Operations = asking(0.7)
 	first, err := sim.Run(design, w)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)

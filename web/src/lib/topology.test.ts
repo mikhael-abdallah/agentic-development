@@ -14,6 +14,8 @@ import {
   whyNotCall,
   PARAMS_KEY,
   PARAM_FIELDS,
+  OPERATION_FIELDS,
+  OPERATION_KINDS,
   SCENARIO_FIELDS,
   WORKLOAD_FIELDS,
   defaultWorkload,
@@ -93,6 +95,27 @@ describe("the mirrored contract", () => {
 
   it("names the same workload fields", () => {
     expect(sortedKeys(readPreset().workload)).toEqual(sortedKeys(WORKLOAD_FIELDS));
+  });
+
+  // The workload check above compares top-level keys, so `operations` being
+  // present satisfies it whatever is inside. What is inside is a list of
+  // objects the engine decodes with unknown fields refused, which is exactly
+  // the drift that check cannot see — so it is walked here the way edges are.
+  it("names the same operation fields", () => {
+    const workload = readPreset().workload as { operations: unknown[] };
+    expect(workload.operations.length).toBeGreaterThan(0);
+    expect(workload.operations.map(sortedKeys)).toEqual(
+      workload.operations.map(() => sortedKeys(OPERATION_FIELDS)),
+    );
+  });
+
+  it("knows every operation kind the preset uses", () => {
+    const workload = readPreset().workload as { operations: { kind: string }[] };
+    const kinds = workload.operations.map((operation) => operation.kind);
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds.map((kind) => OPERATION_KINDS.includes(kind as never))).toEqual(
+      kinds.map(() => true),
+    );
   });
 
   it("names the same edge fields", () => {
@@ -200,8 +223,16 @@ describe("defaultWorkload", () => {
     const workload = defaultWorkload();
     expect(workload.rateRps).toBeGreaterThan(0);
     expect(workload.durationMs).toBeGreaterThan(0);
-    expect(workload.readFraction).toBeGreaterThanOrEqual(0);
-    expect(workload.readFraction).toBeLessThanOrEqual(1);
+    // Operations the engine accepts: named, of a kind it knows, each with a
+    // share of its own, adding up to all of the traffic.
+    expect(workload.operations.length).toBeGreaterThan(0);
+    for (const operation of workload.operations) {
+      expect(operation.name).not.toBe("");
+      expect(OPERATION_KINDS).toContain(operation.kind);
+      expect(operation.share).toBeGreaterThan(0);
+    }
+    const total = workload.operations.reduce((sum, operation) => sum + operation.share, 0);
+    expect(total).toBeCloseTo(1, 9);
     // A whole run of warmup leaves nothing to measure, which the engine
     // rejects outright.
     expect(workload.warmupFraction).toBeGreaterThanOrEqual(0);

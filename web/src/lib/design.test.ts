@@ -277,7 +277,13 @@ describe("designOf", () => {
     description: "d",
     goal: "g",
     topology: chain().topology,
-    workload: { rateRps: 1, readFraction: 1, durationMs: 1, seed: 1, warmupFraction: 0 },
+    workload: {
+      rateRps: 1,
+      operations: [{ name: "read", kind: "read", share: 1 }],
+      durationMs: 1,
+      seed: 1,
+      warmupFraction: 0,
+    },
   };
 
   it("lays out a scenario that arrived without coordinates", () => {
