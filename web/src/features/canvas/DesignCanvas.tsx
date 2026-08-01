@@ -39,8 +39,9 @@ const Surface = dynamic(
 
 interface DesignCanvasProps {
   readonly controller: DesignController;
+  readonly onEdit: (id: string) => void;
 }
 
-export function DesignCanvas({ controller }: DesignCanvasProps) {
-  return <Surface controller={controller} />;
+export function DesignCanvas({ controller, onEdit }: DesignCanvasProps) {
+  return <Surface controller={controller} onEdit={onEdit} />;
 }

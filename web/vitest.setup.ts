@@ -45,3 +45,29 @@ Object.defineProperties(globalThis.HTMLElement.prototype, {
   offsetWidth: { get: () => 1 },
   offsetHeight: { get: () => 1 },
 });
+
+// jsdom implements <dialog> as an element and not as a dialog: `showModal` and
+// `close` are simply absent, so a component that opens one throws on mount.
+//
+// These are the smallest stand-ins that let the open/closed state be asserted:
+// they move the `open` attribute and fire the `close` event, which is the part
+// the settings dialog reacts to. They are emphatically not the feature — the
+// focus trap, the inert background and the backdrop are the browser's, and
+// nothing here exercises them. Those are checked by driving a real browser.
+// Cast, because the DOM types say these methods are always there and in jsdom
+// they are simply not on the prototype. The check is about the runtime, and
+// writing it against the types would be writing it against a claim that is
+// false here.
+const dialogPrototype = globalThis.HTMLDialogElement.prototype as unknown as Record<
+  string,
+  unknown
+>;
+if (typeof dialogPrototype.showModal !== "function") {
+  dialogPrototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.open = true;
+  };
+  dialogPrototype.close = function close(this: HTMLDialogElement) {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  };
+}

@@ -63,9 +63,14 @@ function isKind(value: string): value is NodeKind {
 
 interface SurfaceProps {
   readonly controller: DesignController;
+  /** Called when a component is picked to be worked on, which is the same
+   *  gesture as selecting it. The canvas does not know what happens next —
+   *  the page brings the settings up — so it says what happened, not what to
+   *  do about it. */
+  readonly onEdit: (id: string) => void;
 }
 
-function Flow({ controller }: SurfaceProps) {
+function Flow({ controller, onEdit }: SurfaceProps) {
   const { design, add, move, link, unlink, drop, select } = controller;
   const { screenToFlowPosition, fitView } = useReactFlow();
   // Why the last connection was refused. Shown rather than swallowed: an edge
@@ -158,6 +163,7 @@ function Flow({ controller }: SurfaceProps) {
         onConnect={onConnect}
         onNodeClick={(_, node) => {
           select(node.id);
+          onEdit(node.id);
         }}
         onPaneClick={() => {
           select(null);
@@ -192,10 +198,10 @@ function Flow({ controller }: SurfaceProps) {
  * Nothing else in the app may import it directly, or the chunk it was split
  * into is pulled straight back into the first load.
  */
-export function Surface({ controller }: SurfaceProps) {
+export function Surface({ controller, onEdit }: SurfaceProps) {
   return (
     <ReactFlowProvider>
-      <Flow controller={controller} />
+      <Flow controller={controller} onEdit={onEdit} />
     </ReactFlowProvider>
   );
 }

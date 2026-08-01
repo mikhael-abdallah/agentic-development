@@ -79,4 +79,28 @@ describe("Home", () => {
     );
     expect(within(canvasOf(container)).getByText("Service")).toBeDefined();
   });
+
+  // What the settings are for: the component that was clicked, named in the
+  // dialog, rather than a panel down the side that could be about anything.
+  it("brings up the settings of a component that is clicked", async () => {
+    const container = await pageWithCanvas();
+    expect(container.querySelector("dialog")?.open).toBe(false);
+    fireEvent.click(container.querySelectorAll(".react-flow__node")[0] ?? container);
+    expect(container.querySelector("dialog")?.open).toBe(true);
+    expect(screen.getByRole("heading", { name: "Client" })).toBeDefined();
+  });
+
+  // A new component arrives with ordinary settings already on it. The dialog
+  // opens so they can be changed, not so they have to be: closing it without
+  // touching anything leaves a component that runs.
+  it("brings up the settings of a component as it is created, already filled in", async () => {
+    const container = await pageWithCanvas();
+    fireEvent.click(screen.getByRole("button", { name: /Service/ }));
+    await waitFor(() => {
+      expect(container.querySelector("dialog")?.open).toBe(true);
+    });
+    expect(screen.getByLabelText("Instances")).toHaveProperty("value", "1");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(container.querySelector("dialog")?.open).toBe(false);
+  });
 });
