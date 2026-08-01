@@ -87,6 +87,24 @@ func TestTheUrlShortenerIsShipped(t *testing.T) {
 			t.Errorf("the preset's %s is a %s, want a %s", name, got, want)
 		}
 	}
+	// And that the service says what those operations cost it. An endpoint per
+	// operation, because a preset carrying none would leave the contract test
+	// on the web side comparing an empty list against an empty list — a check
+	// that matches nothing looks exactly like one that passes.
+	served := map[string]bool{}
+	for _, node := range shortener.Topology.Nodes {
+		if node.Service == nil {
+			continue
+		}
+		for _, endpoint := range node.Service.Endpoints {
+			served[endpoint.Operation] = true
+		}
+	}
+	for _, op := range shortener.Workload.Operations {
+		if !served[op.Name] {
+			t.Errorf("the preset offers %s traffic and no endpoint says what it costs", op.Name)
+		}
+	}
 	// Read-heavy, or the cache in it is decoration.
 	reading := 0.0
 	for _, op := range shortener.Workload.Operations {

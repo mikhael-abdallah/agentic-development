@@ -261,6 +261,12 @@ func (e *engine) startService(st *station, server int, req *request) {
 	if !req.read() {
 		hold = st.holdWrite
 	}
+	// An endpoint for this operation, if the component has an API and it names
+	// one. Last, because it is the most specific thing anyone said about what
+	// this request costs here.
+	if perCall, named := st.perCall[req.op.Name]; named {
+		hold = perCall
+	}
 	if st.sampled {
 		hold = exponential(e.rng.stream(st.id), hold)
 	}

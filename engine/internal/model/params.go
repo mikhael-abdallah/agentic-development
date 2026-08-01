@@ -48,16 +48,64 @@ func (p LoadBalancerParams) validate() error {
 	return representable("overheadMs", float64(p.Overhead))
 }
 
+// Endpoint is one thing a service can be asked to do, and what that costs it.
+//
+// A service is not equally fast at everything it serves. Looking a short code
+// up in a cache and writing a new one are the same pool of servers doing two
+// jobs whose costs are nothing like each other, and a design that averaged
+// them into one number would put the same load on the pool whichever way the
+// traffic went — which is the question anyone drawing this wants to ask.
+//
+// Two fields where one might do, and the separation is the point. Name is what
+// a person calls it, "GET /{code}", and is the API being designed. Operation
+// is which of the workload's traffic arrives here. They are different facts:
+// an API's shape does not change when the traffic mix does.
+type Endpoint struct {
+	Name string `json:"name"`
+	// Operation names an operation in the workload. An endpoint for traffic
+	// this run does not offer is not an error — an API has more endpoints than
+	// any one load exercises — it simply never fires.
+	Operation string `json:"operation"`
+	// MeanService replaces the service's own mean for this operation.
+	MeanService Millis `json:"meanServiceMs"`
+}
+
+func (e Endpoint) validate() error {
+	if e.Name == "" {
+		return fmt.Errorf("%w: an endpoint has no name", ErrParamRange)
+	}
+	if e.Operation == "" {
+		return fmt.Errorf("%w: endpoint %q does not say which operation it serves",
+			ErrParamRange, e.Name)
+	}
+	if err := aboveZero("meanServiceMs of "+e.Name, float64(e.MeanService)); err != nil {
+		return err
+	}
+	return representable("meanServiceMs of "+e.Name, float64(e.MeanService))
+}
+
 // ServiceParams configures a pool of identical application servers.
 type ServiceParams struct {
 	// Instances is how many requests the pool can serve at once.
 	Instances int `json:"instances"`
 	// MeanService is the average time one instance spends on a request.
+	//
+	// What every operation costs unless an endpoint below says otherwise. It
+	// stays required with endpoints present, so that traffic the API does not
+	// describe still has a cost rather than being free.
 	MeanService Millis `json:"meanServiceMs"`
 	// QueueCapacity is how many requests may wait for a free instance.
 	// Zero means unbounded: requests queue rather than being rejected, which
 	// is the difference between a slow design and a lossy one.
 	QueueCapacity int `json:"queueCapacity"`
+	// Endpoints is the API this service exposes, and what each call costs.
+	//
+	// Sparse, and deliberately so. A service with none behaves exactly as one
+	// did before they existed, and adding one can never make a component
+	// invalid — there is always a mean to fall back to. Omitted from the wire
+	// when empty, so a design that does not describe its API does not carry an
+	// empty list saying it has none.
+	Endpoints []Endpoint `json:"endpoints,omitempty"`
 }
 
 func (p ServiceParams) validate() error {
@@ -70,7 +118,36 @@ func (p ServiceParams) validate() error {
 	if err := representable("meanServiceMs", float64(p.MeanService)); err != nil {
 		return err
 	}
-	return atLeastInt("queueCapacity", p.QueueCapacity, 0)
+	if err := atLeastInt("queueCapacity", p.QueueCapacity, 0); err != nil {
+		return err
+	}
+	return p.validateEndpoints()
+}
+
+// validateEndpoints checks that the API says each thing once.
+//
+// Names unique because two endpoints with one name are one endpoint as far as
+// anything reading the design is concerned. Operations unique because two
+// endpoints claiming the same traffic have no answer for what that traffic
+// costs, and picking the first would be an invention.
+func (p ServiceParams) validateEndpoints() error {
+	named := make(map[string]bool, len(p.Endpoints))
+	serving := make(map[string]string, len(p.Endpoints))
+	for _, e := range p.Endpoints {
+		if err := e.validate(); err != nil {
+			return err
+		}
+		if named[e.Name] {
+			return fmt.Errorf("%w: two endpoints are called %q", ErrParamRange, e.Name)
+		}
+		named[e.Name] = true
+		if other, taken := serving[e.Operation]; taken {
+			return fmt.Errorf("%w: %q and %q both serve %q, so what it costs has no answer",
+				ErrParamRange, other, e.Name, e.Operation)
+		}
+		serving[e.Operation] = e.Name
+	}
+	return nil
 }
 
 // CacheParams configures a cache in front of a slower store.

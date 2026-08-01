@@ -34,7 +34,16 @@ type station struct {
 	// draw from a distribution whose mean is nothing, but you can add nothing.
 	hold      time.Duration
 	holdWrite time.Duration
-	sampled   bool
+	// perCall is what a named operation costs here instead of hold, keyed by
+	// the operation's name. Empty for every component that does not describe
+	// an API, which is every kind but a service and most services.
+	//
+	// An override on the mean and not on the draw: the time is still sampled
+	// from a distribution, and sampling consumes exactly one number whatever
+	// the mean is. That is what lets an endpoint be added to a design without
+	// shifting a single draw anywhere else in the run.
+	perCall map[string]time.Duration
+	sampled bool
 
 	// slots[i] is how many requests server i is holding, and pool how many it
 	// can hold. Index 0 is the primary — for a database the only server a
@@ -133,12 +142,29 @@ func newService(n model.Node, downstream []string) (*station, error) {
 		next:      downstream,
 		hold:      mean,
 		holdWrite: mean,
+		perCall:   endpointCosts(n.Service.Endpoints),
 		sampled:   true,
 		slots:     make([]int, 1),
 		busy:      make([]time.Duration, 1),
 		pool:      n.Service.Instances,
 		capacity:  n.Service.QueueCapacity,
 	}, nil
+}
+
+// endpointCosts indexes an API by the operation each endpoint serves.
+//
+// Nil for a service with no endpoints, and a nil map reads as empty — so a
+// design that does not describe its API costs one map lookup that misses and
+// behaves exactly as it did before endpoints existed.
+func endpointCosts(endpoints []model.Endpoint) map[string]time.Duration {
+	if len(endpoints) == 0 {
+		return nil
+	}
+	costs := make(map[string]time.Duration, len(endpoints))
+	for _, e := range endpoints {
+		costs[e.Operation] = e.MeanService.Duration()
+	}
+	return costs
 }
 
 func newCache(n model.Node, downstream []string) (*station, error) {

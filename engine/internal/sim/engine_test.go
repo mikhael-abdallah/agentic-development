@@ -390,3 +390,116 @@ func TestEveryOperationGetsItsShareOfTheTraffic(t *testing.T) {
 			"every read, want about the 0.1 share the one write operation has", reaching)
 	}
 }
+
+// serviceMean is what the pool below costs for anything its API does not
+// name, so a case can say how an endpoint compares to it without repeating a
+// number.
+const serviceMean model.Millis = 5
+
+// serving builds a service with the API given, over a design the endpoints are
+// the only interesting thing in.
+func serving(endpoints ...model.Endpoint) model.Topology {
+	return model.Topology{
+		Nodes: []model.Node{
+			{ID: "client", Kind: model.KindClient},
+			entry(),
+			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{
+				Instances:   4,
+				MeanService: serviceMean,
+				Endpoints:   endpoints,
+			}},
+		},
+		Edges: []model.Edge{{From: "client", To: "in"}, {From: "in", To: "api"}},
+	}
+}
+
+// An endpoint is an override on the mean and not on the draw. The time is
+// still sampled, and sampling consumes exactly one number whatever the mean
+// is — which is what lets an API be described without shifting a draw
+// anywhere else in the run.
+//
+// An identical Result rather than a similar one: there is no mechanism by
+// which an endpoint costing what the service already costs could change
+// anything, and a test that allowed a little movement would not notice one
+// appearing.
+func TestAnEndpointCostingWhatTheServiceCostsChangesNothing(t *testing.T) {
+	t.Parallel()
+	w := load(200, 12)
+	w.Operations = asking(0.8)
+	plain, err := sim.Run(serving(), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	described, err := sim.Run(serving(
+		model.Endpoint{Name: "GET /thing", Operation: "read", MeanService: serviceMean},
+		model.Endpoint{Name: "PUT /thing", Operation: "write", MeanService: serviceMean},
+	), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if !same(plain, described) {
+		t.Error("describing the API changed the run, so an endpoint is costing a draw")
+	}
+}
+
+// And what it is for. Two operations through one pool, and only the one the
+// endpoint names gets more expensive.
+func TestAnEndpointCostsOnlyTheOperationItServes(t *testing.T) {
+	t.Parallel()
+	w := load(120, 13)
+	w.Operations = asking(0.5)
+	base, err := sim.Run(serving(), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	slowRead, err := sim.Run(serving(
+		model.Endpoint{Name: "GET /thing", Operation: "read", MeanService: 40},
+	), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if slowRead.Latency.Mean <= base.Latency.Mean {
+		t.Errorf("an eightfold read endpoint gave mean latency %v against %v",
+			slowRead.Latency.Mean, base.Latency.Mean)
+	}
+	// Writes were never named, so they still cost the service's own mean —
+	// and a design where every operation got slower would be an endpoint
+	// replacing the mean rather than overriding it for its own traffic.
+	writesOnly := load(120, 13)
+	writesOnly.Operations = asking(0)
+	untouched, err := sim.Run(serving(
+		model.Endpoint{Name: "GET /thing", Operation: "read", MeanService: 40},
+	), writesOnly)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	plainWrites, err := sim.Run(serving(), writesOnly)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if !same(untouched, plainWrites) {
+		t.Error("a read endpoint changed a run with no reads in it")
+	}
+}
+
+// An API has more endpoints than any one load exercises, so an endpoint for
+// traffic this run does not offer is not an error. It simply never fires, and
+// a design that refused it would be refusing to describe an API fully.
+func TestAnEndpointNothingCallsIsAllowedAndDoesNothing(t *testing.T) {
+	t.Parallel()
+	w := load(150, 14)
+	w.Operations = asking(1)
+	plain, err := sim.Run(serving(), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	spare, err := sim.Run(serving(
+		model.Endpoint{Name: "DELETE /thing", Operation: "delete", MeanService: 900},
+	), w)
+	if err != nil {
+		t.Fatalf("Run() on an endpoint nothing calls: %v", err)
+	}
+	if !same(plain, spare) {
+		t.Error("an endpoint no traffic reaches changed the run")
+	}
+}

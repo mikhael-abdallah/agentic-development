@@ -138,6 +138,15 @@ func TestTheBottleneckMovesToTheDatabaseWhenTheCacheStopsHelping(t *testing.T) {
 // When one of these fails: either the simulation changed on purpose, in which
 // case these numbers move in the same commit and its message says why, or
 // something moved that was not meant to.
+//
+// They have moved once, and the reason is worth keeping. The preset used to
+// serve every request in a flat 8 ms; it now describes its API, and a resolve
+// costs 7 ms against a shorten's 25. The weighted mean is 7.9 ms, so the pool
+// is loaded almost exactly as it was — and the tail is not. p99 went from 69 ms
+// to 93 while the mean moved by a third of a millisecond, because one request
+// in twenty now holds an instance for three times as long and everything behind
+// it waits. That gap between the mean and the tail is the whole reason this
+// simulator draws percentiles, and the preset now demonstrates it.
 const (
 	slackTime  = time.Microsecond
 	slackRatio = 1e-9
@@ -168,7 +177,7 @@ func TestTheShortenerMovesTheSameRequests(t *testing.T) {
 		{"the cache served", res.Nodes["cache"].Served, 14473},
 		// The one that says the read/write split still lands where it did:
 		// everything the cache could not answer, plus every write.
-		{"the database served", res.Nodes["db"].Served, 2733},
+		{"the database served", res.Nodes["db"].Served, 2744},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s %d, was %d", c.what, c.got, c.want)
@@ -183,11 +192,11 @@ func TestTheShortenerReportsTheSameLatencies(t *testing.T) {
 		what      string
 		got, want time.Duration
 	}{
-		{"mean", res.Latency.Mean, 13671264 * time.Nanosecond},
-		{"p50", res.Latency.P50, 9642649 * time.Nanosecond},
-		{"p95", res.Latency.P95, 39058864 * time.Nanosecond},
-		{"p99", res.Latency.P99, 68918704 * time.Nanosecond},
-		{"max", res.Latency.Max, 251498899 * time.Nanosecond},
+		{"mean", res.Latency.Mean, 14022315 * time.Nanosecond},
+		{"p50", res.Latency.P50, 8874412 * time.Nanosecond},
+		{"p95", res.Latency.P95, 42671329 * time.Nanosecond},
+		{"p99", res.Latency.P99, 92978110 * time.Nanosecond},
+		{"max", res.Latency.Max, 313287597 * time.Nanosecond},
 	} {
 		if d := c.got - c.want; d > slackTime || d < -slackTime {
 			t.Errorf("%s latency is %v, was %v", c.what, c.got, c.want)
@@ -203,8 +212,8 @@ func TestTheShortenerLoadsItsComponentsTheSame(t *testing.T) {
 		got, want float64
 	}{
 		{"throughput", res.Throughput, 301.5208333333333},
-		{"the service's utilization", res.Nodes["api"].Utilization, 0.5964016212395833},
-		{"the database's utilization", res.Nodes["db"].Utilization, 0.27306545577083335},
+		{"the service's utilization", res.Nodes["api"].Utilization, 0.594603574125},
+		{"the database's utilization", res.Nodes["db"].Utilization, 0.27459807838541667},
 		// A balancer and a cache are hops rather than queues, so they have no
 		// capacity to be full of. Pinned so that giving one a queue is a
 		// decision this test makes someone take on purpose.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { decodeNode, encodeNode } from "@/lib/clipboard";
-import { type DesignNode, NODE_KINDS, newNode } from "@/lib/topology";
+import { type DesignNode, NODE_KINDS, PARAM_FIELDS, newNode } from "@/lib/topology";
 
 /** Clipboard text for a node with `node` replaced by whatever is given, so a
  *  test can put one field wrong and leave the rest well-formed. */
@@ -19,6 +19,73 @@ function tuned(): DesignNode {
     service: { instances: 7, meanServiceMs: 3.5, queueCapacity: 250 },
   };
 }
+
+/**
+ * A component of each kind with every field that kind may carry set.
+ *
+ * The fixture the round-trip test below leans on, and the reason it is written
+ * out rather than built from `newNode`: a default component does not carry the
+ * optional fields, so a copy that dropped one would round-trip perfectly.
+ */
+const FULLY_DESCRIBED: DesignNode[] = [
+  { id: "client", kind: "client", label: "Browsers" },
+  { id: "lb", kind: "loadBalancer", label: "Edge", loadBalancer: { algorithm: "random", overheadMs: 0.4 } },
+  {
+    id: "api",
+    kind: "service",
+    label: "Redirect service",
+    service: {
+      instances: 4,
+      meanServiceMs: 8,
+      queueCapacity: 500,
+      endpoints: [
+        { name: "GET /{code}", operation: "resolve", meanServiceMs: 7 },
+        { name: "POST /shorten", operation: "shorten", meanServiceMs: 25 },
+      ],
+    },
+  },
+  { id: "cache", kind: "cache", label: "Key cache", cache: { hitRatio: 0.8, hitLatencyMs: 0.4, writePolicy: "writeBack" } },
+  { id: "db", kind: "database", label: "Key store", database: { replicas: 2, meanReadMs: 11, meanWriteMs: 29, poolSize: 6 } },
+];
+
+/** The parameters a described component carries, without indexing an object
+ *  by a key held in a variable. */
+const paramsOf = new Map<string, object>(
+  FULLY_DESCRIBED.flatMap((node) =>
+    [node.loadBalancer, node.service, node.cache, node.database]
+      .filter((params) => params !== undefined)
+      .map((params) => [node.kind, params]),
+  ),
+);
+
+// The guard the compiler cannot give.
+//
+// A reader that drops a *required* parameter fails to compile, because the
+// return type is the contract's own interface. An optional one does not — and
+// that is not hypothetical: `endpoints` was added to `ServiceParams`,
+// `serviceOf` went on returning the three fields it knew, and copying the
+// shortener's service pasted one whose per-operation costs had silently
+// reverted to its flat mean.
+//
+// So the fixture above is held against `PARAM_FIELDS`. If a field is added to
+// the contract and not to the fixture, this fails before the round trip gets a
+// chance to pass for the wrong reason.
+describe("every field a component can carry", () => {
+  it("is set on the fixture the round trip uses", () => {
+    for (const [kind, fields] of Object.entries(PARAM_FIELDS)) {
+      const params = paramsOf.get(kind);
+      expect(params, `no ${kind} in the fixture`).toBeDefined();
+      const named = (value: object) => Object.keys(value).sort((a, b) => a.localeCompare(b));
+      expect(named(params ?? {})).toEqual(named(fields));
+    }
+  });
+
+  it("survives a copy and a paste unchanged", () => {
+    for (const node of FULLY_DESCRIBED) {
+      expect(decodeNode(encodeNode(node))).toEqual(node);
+    }
+  });
+});
 
 describe("encodeNode and decodeNode", () => {
   it("brings a component back exactly as it went", () => {
@@ -105,6 +172,46 @@ describe("decodeNode refusing what is not a component", () => {
     for (const kind of NODE_KINDS.filter((each) => each !== "client")) {
       expect(decodeNode(tagged({ id: kind, kind, [kind]: "fast" }))).toBeNull();
     }
+  });
+
+  // Half an API is a component whose costs are not the ones that were copied,
+  // so a malformed entry refuses the whole paste rather than being skipped.
+  it("refuses an API that is not a list", () => {
+    const node = { ...tuned(), service: { ...tuned().service, endpoints: "GET /{code}" } };
+    expect(decodeNode(tagged(node))).toBeNull();
+  });
+
+  it("refuses an endpoint that is not an object", () => {
+    const node = { ...tuned(), service: { ...tuned().service, endpoints: ["GET /{code}"] } };
+    expect(decodeNode(tagged(node))).toBeNull();
+  });
+
+  it("refuses an endpoint missing any of its fields", () => {
+    const whole = { name: "GET /{code}", operation: "resolve", meanServiceMs: 7 };
+    for (const missing of ["name", "operation", "meanServiceMs"]) {
+      const endpoint = Object.fromEntries(
+        Object.entries(whole).filter(([field]) => field !== missing),
+      );
+      const node = { ...tuned(), service: { ...tuned().service, endpoints: [endpoint] } };
+      expect(decodeNode(tagged(node)), `an endpoint with no ${missing}`).toBeNull();
+    }
+  });
+
+  it("refuses an endpoint whose cost is not a number", () => {
+    const endpoint = { name: "GET /{code}", operation: "resolve", meanServiceMs: "fast" };
+    const node = { ...tuned(), service: { ...tuned().service, endpoints: [endpoint] } };
+    expect(decodeNode(tagged(node))).toBeNull();
+  });
+
+  // One good endpoint beside one broken one still refuses, because a paste
+  // that kept the good half would be a component the user never copied.
+  it("refuses an API where only one endpoint is wrong", () => {
+    const endpoints = [
+      { name: "GET /{code}", operation: "resolve", meanServiceMs: 7 },
+      { name: "POST /shorten", operation: "", meanServiceMs: 25 },
+    ];
+    const node = { ...tuned(), service: { ...tuned().service, endpoints } };
+    expect(decodeNode(tagged(node))).toBeNull();
   });
 
   it("refuses a database missing its pool size", () => {

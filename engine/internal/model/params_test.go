@@ -307,3 +307,93 @@ func TestEveryWritePolicyIsOffered(t *testing.T) {
 		t.Errorf("WritePolicies() offers %d policies, want 3", len(seen))
 	}
 }
+
+// api is the smallest design carrying a service with the endpoints given, so
+// a case below says only what is wrong with the API. A node validates as part
+// of a design rather than on its own, which is how every other case here
+// reaches one.
+func api(endpoints ...model.Endpoint) model.Topology {
+	return model.Topology{
+		Nodes: []model.Node{
+			{ID: "client", Kind: model.KindClient},
+			{ID: "api", Kind: model.KindService, Service: &model.ServiceParams{
+				Instances: 1, MeanService: 5, QueueCapacity: 0, Endpoints: endpoints,
+			}},
+		},
+		Edges: []model.Edge{{From: "client", To: "api"}},
+	}
+}
+
+func TestAServiceMayDescribeItsApi(t *testing.T) {
+	t.Parallel()
+	design := api(
+		model.Endpoint{Name: "GET /{code}", Operation: "resolve", MeanService: 3},
+		model.Endpoint{Name: "POST /shorten", Operation: "shorten", MeanService: 14},
+	)
+	if err := design.Validate(); err != nil {
+		t.Errorf("Validate() on a described API = %v, want nil", err)
+	}
+}
+
+// The whole point of the shape: a service that says nothing about its API is
+// exactly the service it was before endpoints existed.
+func TestAServiceNeedNotDescribeItsApi(t *testing.T) {
+	t.Parallel()
+	if err := api().Validate(); err != nil {
+		t.Errorf("Validate() on a service with no endpoints = %v, want nil", err)
+	}
+}
+
+func TestABrokenApiIsRefused(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		design model.Topology
+	}{
+		{"an endpoint with no name", api(
+			model.Endpoint{Operation: "resolve", MeanService: 3},
+		)},
+		{"an endpoint that serves no operation", api(
+			model.Endpoint{Name: "GET /{code}", MeanService: 3},
+		)},
+		{"an endpoint that costs nothing", api(
+			model.Endpoint{Name: "GET /{code}", Operation: "resolve", MeanService: 0},
+		)},
+		{"an endpoint that costs less than nothing", api(
+			model.Endpoint{Name: "GET /{code}", Operation: "resolve", MeanService: -1},
+		)},
+		// One endpoint as far as anything reading the design is concerned.
+		{"two endpoints of one name", api(
+			model.Endpoint{Name: "GET /{code}", Operation: "resolve", MeanService: 3},
+			model.Endpoint{Name: "GET /{code}", Operation: "shorten", MeanService: 9},
+		)},
+		// The one that matters: two endpoints claiming the same traffic have
+		// no answer for what that traffic costs, and taking the first would be
+		// an invention.
+		{"two endpoints serving one operation", api(
+			model.Endpoint{Name: "GET /{code}", Operation: "resolve", MeanService: 3},
+			model.Endpoint{Name: "HEAD /{code}", Operation: "resolve", MeanService: 1},
+		)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.design.Validate()
+			if !errors.Is(err, model.ErrParamRange) {
+				t.Errorf("Validate() with %s = %v, want ErrParamRange", tt.name, err)
+			}
+		})
+	}
+}
+
+// An endpoint whose cost the clock cannot hold, caught by the same rule the
+// service's own mean is caught by.
+func TestAnEndpointLongerThanTheClockIsRefused(t *testing.T) {
+	t.Parallel()
+	design := api(model.Endpoint{
+		Name: "GET /{code}", Operation: "resolve", MeanService: model.Millis(1e300),
+	})
+	if err := design.Validate(); !errors.Is(err, model.ErrParamRange) {
+		t.Errorf("Validate() on an endpoint of 1e300 ms = %v, want ErrParamRange", err)
+	}
+}

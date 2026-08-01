@@ -14,6 +14,8 @@ import {
   whyNotCall,
   PARAMS_KEY,
   PARAM_FIELDS,
+  ENDPOINT_FIELDS,
+  OMITTED_WHEN_EMPTY,
   OPERATION_FIELDS,
   OPERATION_KINDS,
   SCENARIO_FIELDS,
@@ -88,6 +90,27 @@ const paramFieldsOf = new Map<string, string[]>(
   Object.entries(PARAM_FIELDS).map(([key, fields]) => [key, sortedKeys(fields)]),
 );
 
+/** What a kind's parameters should name, given which of the optional fields
+ *  this particular design turned out to use. */
+function expectedParamFields(key: string, present: string[]): string[] {
+  const has = new Set(present);
+  return (paramFieldsOf.get(key) ?? []).filter(
+    (field) => has.has(field) || !OMITTED_WHEN_EMPTY.includes(field),
+  );
+}
+
+/** Each component's parameter fields beside the ones this side expects, paired
+ *  rather than gathered into two lists — two lists can only be compared by
+ *  position, and a comparison by position is one component's fields away from
+ *  being checked against another's. */
+function paramFieldPairs(): { inside: string[]; expected: string[] }[] {
+  return presetNodes().map((node) => {
+    const key = paramsKeyOf.get(String(node.kind)) ?? "";
+    const inside = sortedKeys(new Map(Object.entries(node)).get(key) ?? {});
+    return { inside, expected: expectedParamFields(key, inside) };
+  });
+}
+
 describe("the mirrored contract", () => {
   it("names the same top-level fields as the engine's scenario", () => {
     expect(sortedKeys(readPreset())).toEqual(sortedKeys(SCENARIO_FIELDS));
@@ -149,17 +172,32 @@ describe("the mirrored contract", () => {
     expect(carried).toEqual(expected);
   });
 
+  // Key sets, still exactly — minus the optional fields this design happens
+  // not to use. A service that does not describe its API carries no
+  // `endpoints` key, and requiring one would mean every preset had to declare
+  // every optional field to keep this test honest. What the comparison still
+  // catches is both failures worth catching: a key in the JSON this side does
+  // not know, and a required field this side declares that the engine does not
+  // send.
   it("names the same fields inside those parameters", () => {
-    const nodes = presetNodes();
-    const inside = nodes.map((node) => {
-      const key = paramsKeyOf.get(String(node.kind)) ?? "";
-      return sortedKeys(new Map(Object.entries(node)).get(key) ?? {});
+    const pairs = paramFieldPairs();
+    expect(pairs.map((pair) => pair.inside)).toEqual(pairs.map((pair) => pair.expected));
+  });
+
+  // The optional fields are only allowed to be absent. One that is there is
+  // held to the same standard as every other, or "optional" would quietly mean
+  // "unchecked" — and `endpoints` is a list of objects, which is exactly the
+  // shape a top-level key comparison cannot see inside.
+  it("names the same fields inside an endpoint it describes", () => {
+    const endpoints = presetNodes().flatMap((node) => {
+      const service = node.service as { endpoints?: unknown[] } | undefined;
+      return service?.endpoints ?? [];
     });
-    const expected = nodes.map((node) => {
-      const key = paramsKeyOf.get(String(node.kind)) ?? "";
-      return paramFieldsOf.get(key) ?? [];
-    });
-    expect(inside).toEqual(expected);
+    // Or this compares an empty list against an empty list, which is a check
+    // that matches nothing and looks exactly like one that passes. The preset
+    // describes its API and the engine has a test saying it must.
+    expect(endpoints.length).toBeGreaterThan(0);
+    expect(endpoints.map(sortedKeys)).toEqual(endpoints.map(() => sortedKeys(ENDPOINT_FIELDS)));
   });
 
   it("knows the balancing algorithm the preset asks for", () => {
