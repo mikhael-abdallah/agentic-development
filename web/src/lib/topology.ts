@@ -83,11 +83,65 @@ export interface CacheParams {
   writePolicy: WritePolicy;
 }
 
+/**
+ * One field of a table, and whether it can be looked up by. Mirrors Column in
+ * engine/internal/model/params.go.
+ *
+ * Indexed is the whole of it, because indexed or not is the whole of what this
+ * model can act on. A type or a width changes what a row costs to store and
+ * nothing about what a query costs to answer, and a field that moved no number
+ * would be decoration.
+ */
+export interface Column {
+  name: string;
+  indexed: boolean;
+}
+
+/**
+ * What a database holds, and how much of it.
+ *
+ * `rows` is the load-bearing number. A query that can use an index reads the
+ * rows it matches; one that cannot reads the table — so the size of the table
+ * is what turns a missing index from a detail into an outage.
+ */
+export interface Table {
+  name: string;
+  rows: number;
+  columns: Column[];
+}
+
+/**
+ * What one operation asks of a table.
+ *
+ * The point of the whole schema in four fields: an operation, a table, the
+ * column it looks rows up by, and how many rows it expects. Whether that column
+ * carries an index is the difference between reading `rowsMatched` rows and
+ * reading the table.
+ */
+export interface Query {
+  /** An operation named in the workload, the same link an endpoint uses. */
+  operation: string;
+  table: string;
+  /** The column rows are found by. Unindexed means a scan. */
+  by: string;
+  rowsMatched: number;
+}
+
 export interface DatabaseParams {
   replicas: number;
+  /** What answering anything costs, before the rows a query reads are counted. */
   meanReadMs: number;
   meanWriteMs: number;
   poolSize: number;
+  /** The schema, optional together. A database declaring neither costs its
+   *  means for everything, which is what every database did before a schema
+   *  could be written. */
+  tables?: Table[];
+  queries?: Query[];
+  /** What reading a million rows costs. Required once there are tables, and
+   *  deliberately without a default: converting rows into milliseconds needs a
+   *  number, and any the engine chose would be invented. */
+  scanPerMillionRowsMs?: number;
 }
 
 /**
@@ -281,12 +335,20 @@ export const PARAM_FIELDS = {
   loadBalancer: { algorithm: true, overheadMs: true },
   service: { instances: true, meanServiceMs: true, queueCapacity: true, endpoints: true },
   cache: { hitRatio: true, hitLatencyMs: true, writePolicy: true },
-  database: { replicas: true, meanReadMs: true, meanWriteMs: true, poolSize: true },
+  database: {
+    replicas: true,
+    meanReadMs: true,
+    meanWriteMs: true,
+    poolSize: true,
+    tables: true,
+    queries: true,
+    scanPerMillionRowsMs: true,
+  },
 } satisfies {
   loadBalancer: Fields<LoadBalancerParams>;
   service: Fields<Required<ServiceParams>>;
   cache: Fields<CacheParams>;
-  database: Fields<DatabaseParams>;
+  database: Fields<Required<DatabaseParams>>;
 };
 
 export const NODE_FIELDS = {
@@ -309,13 +371,28 @@ export const NODE_FIELDS = {
  * and the second is the check that catches a field dropped on this side, which
  * is the failure that gets accepted and answered about a different design.
  */
-export const OMITTED_WHEN_EMPTY = ["endpoints"];
+export const OMITTED_WHEN_EMPTY = [
+  "endpoints",
+  "tables",
+  "queries",
+  "scanPerMillionRowsMs",
+];
 
 export const ENDPOINT_FIELDS = {
   name: true,
   operation: true,
   meanServiceMs: true,
 } satisfies Fields<Endpoint>;
+
+// There are deliberately no TABLE_FIELDS, COLUMN_FIELDS or QUERY_FIELDS here
+// yet. The field maps exist so `topology.test.ts` can walk the engine's own
+// embedded preset and compare key sets against it — and no preset declares a
+// schema, so those maps would be exported for a test that compared an empty
+// list against an empty list. They arrive with the preset that uses them.
+//
+// The decode path is not unguarded in the meantime: `clipboard.test.ts` holds a
+// fixture carrying every field of every kind, schema included, and round-trips
+// it.
 
 export const EDGE_FIELDS = { from: true, to: true } satisfies Fields<DesignEdge>;
 

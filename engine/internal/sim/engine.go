@@ -267,6 +267,11 @@ func (e *engine) startService(st *station, server int, req *request) {
 	if perCall, named := st.perCall[req.op.Name]; named {
 		hold = perCall
 	}
+	// And the rows this operation reads, if the component has a schema saying
+	// so. Added rather than replacing: the mean above is what answering
+	// anything costs, and the rows are what this particular query costs on top
+	// of it. Zero for anything with no schema, which a nil map gives for free.
+	hold += st.rowCost[req.op.Name]
 	if st.sampled {
 		hold = exponential(e.rng.stream(st.id), hold)
 	}

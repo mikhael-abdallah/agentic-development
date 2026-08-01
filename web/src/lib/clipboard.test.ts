@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { decodeNode, encodeNode } from "@/lib/clipboard";
 import { type DesignNode, NODE_KINDS, PARAM_FIELDS, newNode } from "@/lib/topology";
 
+/** An object with one key left out, for a case that says a field is required
+ *  by removing it. Hoisted out of the tests because the filter inside a map
+ *  inside an `it` inside a `describe` is one callback deeper than this file is
+ *  allowed to nest. */
+function without(whole: Record<string, unknown>, field: string): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(whole).filter(([had]) => had !== field));
+}
+
 /** Clipboard text for a node with `node` replaced by whatever is given, so a
  *  test can put one field wrong and leave the rest well-formed. */
 function tagged(node: unknown): string {
@@ -45,7 +53,29 @@ const FULLY_DESCRIBED: DesignNode[] = [
     },
   },
   { id: "cache", kind: "cache", label: "Key cache", cache: { hitRatio: 0.8, hitLatencyMs: 0.4, writePolicy: "writeBack" } },
-  { id: "db", kind: "database", label: "Key store", database: { replicas: 2, meanReadMs: 11, meanWriteMs: 29, poolSize: 6 } },
+  {
+    id: "db",
+    kind: "database",
+    label: "Key store",
+    database: {
+      replicas: 2,
+      meanReadMs: 11,
+      meanWriteMs: 29,
+      poolSize: 6,
+      tables: [
+        {
+          name: "links",
+          rows: 50_000_000,
+          columns: [
+            { name: "code", indexed: true },
+            { name: "target", indexed: false },
+          ],
+        },
+      ],
+      queries: [{ operation: "resolve", table: "links", by: "code", rowsMatched: 1 }],
+      scanPerMillionRowsMs: 20,
+    },
+  },
 ];
 
 /** The parameters a described component carries, without indexing an object
@@ -212,6 +242,66 @@ describe("decodeNode refusing what is not a component", () => {
     ];
     const node = { ...tuned(), service: { ...tuned().service, endpoints } };
     expect(decodeNode(tagged(node))).toBeNull();
+  });
+
+  // Half a schema is a database whose costs are not the ones that were copied,
+  // the same rule as half an API.
+  it("refuses a schema that is not a list", () => {
+    const db = { replicas: 1, meanReadMs: 1, meanWriteMs: 1, poolSize: 1, tables: "links" };
+    expect(decodeNode(tagged({ id: "db", kind: "database", database: db }))).toBeNull();
+  });
+
+  // Asserted as a list of pairs rather than one at a time, so a failure names
+  // which field was dropped instead of stopping at the first.
+  it("refuses a table missing any of its fields", () => {
+    const whole = { name: "links", rows: 10, columns: [{ name: "code", indexed: true }] };
+    const missing = ["name", "rows", "columns"];
+    const outcomes = missing.map((field) => {
+      const table = without(whole, field);
+      const db = { replicas: 1, meanReadMs: 1, meanWriteMs: 1, poolSize: 1, tables: [table] };
+      return [field, decodeNode(tagged({ id: "db", kind: "database", database: db }))];
+    });
+    expect(outcomes).toEqual(missing.map((field) => [field, null]));
+  });
+
+  // Indexed is a boolean and nothing else. A string "true" would be truthy
+  // everywhere it was read and would silently make every scan a lookup.
+  it("refuses a column whose index is not a boolean", () => {
+    const table = { name: "links", rows: 10, columns: [{ name: "code", indexed: "true" }] };
+    const db = { replicas: 1, meanReadMs: 1, meanWriteMs: 1, poolSize: 1, tables: [table] };
+    expect(decodeNode(tagged({ id: "db", kind: "database", database: db }))).toBeNull();
+  });
+
+  it("refuses a query missing any of its fields", () => {
+    const whole = { operation: "resolve", table: "links", by: "code", rowsMatched: 1 };
+    const missing = ["operation", "table", "by", "rowsMatched"];
+    const outcomes = missing.map((field) => {
+      const query = without(whole, field);
+      const db = { replicas: 1, meanReadMs: 1, meanWriteMs: 1, poolSize: 1, queries: [query] };
+      return [field, decodeNode(tagged({ id: "db", kind: "database", database: db }))];
+    });
+    expect(outcomes).toEqual(missing.map((field) => [field, null]));
+  });
+
+  // Each of the three schema readers refuses an entry that is not an object at
+  // all, which is what a hand-edited clipboard most often holds.
+  it("refuses a table, a column or a query that is not an object", () => {
+    const base = { replicas: 1, meanReadMs: 1, meanWriteMs: 1, poolSize: 1 };
+    const cases = [
+      { ...base, tables: ["links"] },
+      { ...base, tables: [{ name: "links", rows: 10, columns: ["code"] }] },
+      { ...base, queries: ["resolve"] },
+    ];
+    expect(cases.map((db) => decodeNode(tagged({ id: "db", kind: "database", database: db })))).toEqual(
+      cases.map(() => null),
+    );
+  });
+
+  it("refuses a scan rate that is not a number", () => {
+    const db = {
+      replicas: 1, meanReadMs: 1, meanWriteMs: 1, poolSize: 1, scanPerMillionRowsMs: "slow",
+    };
+    expect(decodeNode(tagged({ id: "db", kind: "database", database: db }))).toBeNull();
   });
 
   it("refuses a database missing its pool size", () => {

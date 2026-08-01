@@ -156,3 +156,129 @@ func TestAComponentSendingToTwoOthersIsRefused(t *testing.T) {
 		t.Errorf("Run() on a service sending to two components = %v, want ErrFanOut", err)
 	}
 }
+
+// links is a table of the given size, indexed by code or not.
+func links(rows int, indexed bool) model.Table {
+	return model.Table{
+		Name: "links",
+		Rows: rows,
+		Columns: []model.Column{
+			{Name: "code", Indexed: indexed},
+			{Name: "target", Indexed: false},
+		},
+	}
+}
+
+// schemad is `stored` with a schema on its database: one table, one query, and
+// a stated cost for reading a million rows.
+func schemad(table model.Table, query model.Query, scanPerMillion model.Millis) model.Topology {
+	design := stored(0, 8, 1, 1)
+	for i := range design.Nodes {
+		if design.Nodes[i].Database == nil {
+			continue
+		}
+		design.Nodes[i].Database.Tables = []model.Table{table}
+		design.Nodes[i].Database.Queries = []model.Query{query}
+		design.Nodes[i].Database.ScanPerMillionRows = scanPerMillion
+	}
+	return design
+}
+
+// The whole reason a schema exists. The same query, the same table, the same
+// number of rows returned — and the only difference whether the column it looks
+// up by carries an index.
+//
+// Without one the store reads the table; with one it reads the row. On a table
+// of any size that is the difference between a query and an outage, and it is a
+// difference no amount of tuning a mean service time can express.
+func TestAnIndexIsTheDifferenceBetweenAQueryAndAScan(t *testing.T) {
+	t.Parallel()
+	query := model.Query{Operation: "read", Table: "links", By: "code", RowsMatched: 1}
+	w := load(40, 41)
+	w.Operations = asking(1)
+
+	indexed, err := sim.Run(schemad(links(4_000_000, true), query, 20), w)
+	if err != nil {
+		t.Fatalf("Run() with an index: %v", err)
+	}
+	scanned, err := sim.Run(schemad(links(4_000_000, false), query, 20), w)
+	if err != nil {
+		t.Fatalf("Run() without one: %v", err)
+	}
+	// Four million rows at 20 ms per million is 80 ms of scanning against a
+	// 1 ms read, so this is not a close call — and it should not be. A rule
+	// that only showed up in the third decimal would not be worth stating.
+	if scanned.Latency.Mean < 10*indexed.Latency.Mean {
+		t.Errorf("scanning averaged %v against %v for an indexed lookup: the index is "+
+			"not deciding how many rows are read", scanned.Latency.Mean, indexed.Latency.Mean)
+	}
+}
+
+// And the other half of the rule: with an index, the cost follows the rows the
+// query matched rather than the size of the table. A table ten times larger
+// costs the same to look one row up in.
+func TestAnIndexedLookupDoesNotCareHowLargeTheTableIs(t *testing.T) {
+	t.Parallel()
+	query := model.Query{Operation: "read", Table: "links", By: "code", RowsMatched: 1}
+	w := load(40, 42)
+	w.Operations = asking(1)
+
+	small, err := sim.Run(schemad(links(1_000_000, true), query, 20), w)
+	if err != nil {
+		t.Fatalf("Run() on a small table: %v", err)
+	}
+	large, err := sim.Run(schemad(links(10_000_000, true), query, 20), w)
+	if err != nil {
+		t.Fatalf("Run() on a large one: %v", err)
+	}
+	if !same(small, large) {
+		t.Error("growing an indexed table changed the run, so the index is not being used")
+	}
+}
+
+// A schema is an override on the mean, not on the draw. The time is still
+// sampled, and sampling consumes one number whatever the mean is — so
+// describing a schema cannot shift a draw anywhere else in the run.
+//
+// A table of a million rows scanned at zero cost per million is the cleanest
+// way to say that: the arithmetic runs and adds nothing.
+func TestASchemaThatCostsNothingChangesNothing(t *testing.T) {
+	t.Parallel()
+	w := load(40, 43)
+	w.Operations = asking(1)
+	plain, err := sim.Run(stored(0, 8, 1, 1), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	// One row matched on an indexed column, so the rows read are one, and one
+	// row at the smallest expressible rate rounds to nothing.
+	query := model.Query{Operation: "read", Table: "links", By: "code", RowsMatched: 1}
+	described, err := sim.Run(schemad(links(1_000_000, true), query, 1e-6), w)
+	if err != nil {
+		t.Fatalf("Run() with a schema: %v", err)
+	}
+	if !same(plain, described) {
+		t.Error("describing a schema changed the run, so a query is costing a draw")
+	}
+}
+
+// A query for traffic this run does not send never fires, the same way an
+// endpoint for it does. A schema describes a database more fully than any one
+// load exercises it.
+func TestAQueryNothingAsksForDoesNothing(t *testing.T) {
+	t.Parallel()
+	w := load(40, 44)
+	w.Operations = asking(1)
+	plain, err := sim.Run(stored(0, 8, 1, 1), w)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	query := model.Query{Operation: "purge", Table: "links", By: "target", RowsMatched: 900}
+	spare, err := sim.Run(schemad(links(1_000_000, false), query, 500), w)
+	if err != nil {
+		t.Fatalf("Run() with a query nothing asks for: %v", err)
+	}
+	if !same(plain, spare) {
+		t.Error("a query no traffic reaches changed the run")
+	}
+}
