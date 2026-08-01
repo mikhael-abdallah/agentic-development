@@ -27,6 +27,7 @@ import {
   type CacheParams,
   type DatabaseParams,
   type DesignNode,
+  type Endpoint,
   type LoadBalancerParams,
   NODE_KINDS,
   type NodeKind,
@@ -86,11 +87,20 @@ function nameOf(value: unknown): string | null {
 // One reader per kind of parameters, each naming every field it builds.
 //
 // That repetition is the point rather than a cost to be factored away. The
-// return type is the contract's own interface, so adding a parameter to
-// `ServiceParams` makes the matching reader below fail to compile with the
-// field missing — which is exactly the drift this file would otherwise have:
-// a decoder that quietly drops a parameter it was never taught about, and a
-// pasted component that differs from the one copied in a way nothing reports.
+// return type is the contract's own interface, so adding a *required*
+// parameter makes the matching reader fail to compile with the field missing.
+//
+// An optional one does not, and that is not a hypothetical: `endpoints` was
+// added to `ServiceParams` as optional, `serviceOf` went on returning the
+// three fields it already knew, the compiler was satisfied, and copying the
+// shortener's service pasted a component whose per-operation costs had
+// silently reverted to its flat mean. The comment here said that could not
+// happen, which is worse than not having said anything.
+//
+// So the compiler covers what it can and `clipboard.test.ts` covers the rest:
+// a node carrying every field a kind may have has to survive a round trip
+// unchanged, and the fixture it uses is checked against `PARAM_FIELDS` so it
+// cannot quietly stop covering one.
 
 function loadBalancerOf(value: unknown): LoadBalancerParams | null {
   const fields = fieldsOf(value);
@@ -105,6 +115,50 @@ function loadBalancerOf(value: unknown): LoadBalancerParams | null {
   return { algorithm, overheadMs };
 }
 
+function endpointOf(value: unknown): Endpoint | null {
+  const fields = fieldsOf(value);
+  if (fields === null) {
+    return null;
+  }
+  const name = nameOf(fields.get("name"));
+  const operation = nameOf(fields.get("operation"));
+  const meanServiceMs = numberOf(fields.get("meanServiceMs"));
+  if (name === null || operation === null || meanServiceMs === null) {
+    return null;
+  }
+  return { name, operation, meanServiceMs };
+}
+
+/**
+ * The API on a pasted service, or null if what is there is not one.
+ *
+ * Absent and empty are both "this service does not describe its API", and both
+ * come back as undefined rather than as an empty list — so a copy of a service
+ * without an API is equal to the service it came from rather than merely
+ * equivalent to it, which is what a round-trip test can check.
+ *
+ * A malformed entry refuses the whole paste rather than being skipped. Half an
+ * API is a component whose costs are not the ones that were copied, and this
+ * file's rule is that a component only comes back if all of it does.
+ */
+function endpointsOf(value: unknown): { ok: true; endpoints?: Endpoint[] } | { ok: false } {
+  if (value === undefined) {
+    return { ok: true };
+  }
+  if (!Array.isArray(value)) {
+    return { ok: false };
+  }
+  const endpoints: Endpoint[] = [];
+  for (const entry of value) {
+    const endpoint = endpointOf(entry);
+    if (endpoint === null) {
+      return { ok: false };
+    }
+    endpoints.push(endpoint);
+  }
+  return endpoints.length === 0 ? { ok: true } : { ok: true, endpoints };
+}
+
 function serviceOf(value: unknown): ServiceParams | null {
   const fields = fieldsOf(value);
   if (fields === null) {
@@ -113,10 +167,12 @@ function serviceOf(value: unknown): ServiceParams | null {
   const instances = numberOf(fields.get("instances"));
   const meanServiceMs = numberOf(fields.get("meanServiceMs"));
   const queueCapacity = numberOf(fields.get("queueCapacity"));
-  if (instances === null || meanServiceMs === null || queueCapacity === null) {
+  const api = endpointsOf(fields.get("endpoints"));
+  if (instances === null || meanServiceMs === null || queueCapacity === null || !api.ok) {
     return null;
   }
-  return { instances, meanServiceMs, queueCapacity };
+  const service: ServiceParams = { instances, meanServiceMs, queueCapacity };
+  return api.endpoints === undefined ? service : { ...service, endpoints: api.endpoints };
 }
 
 function cacheOf(value: unknown): CacheParams | null {

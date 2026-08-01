@@ -36,11 +36,45 @@ export interface LoadBalancerParams {
   overheadMs: number;
 }
 
+/**
+ * One thing a service can be asked to do, and what that costs it. Mirrors
+ * Endpoint in engine/internal/model/params.go.
+ *
+ * A service is not equally fast at everything it serves. Looking a short code
+ * up and writing a new one are the same pool of servers doing two jobs whose
+ * costs are nothing like each other, and averaging them into one number puts
+ * the same load on the pool whichever way the traffic goes — which is the
+ * question anyone drawing this wants to ask.
+ *
+ * Two fields where one might do, and the separation is the point. `name` is
+ * what a person calls it, `GET /{code}`, and is the API being designed.
+ * `operation` is which of the workload's traffic arrives here. An API's shape
+ * does not change when the traffic mix does.
+ */
+export interface Endpoint {
+  name: string;
+  /** An operation named in the workload. One this run does not offer is not
+   *  an error — an API has more endpoints than any load exercises — it simply
+   *  never fires. */
+  operation: string;
+  /** Replaces the service's own mean for this operation. */
+  meanServiceMs: number;
+}
+
 export interface ServiceParams {
   instances: number;
   meanServiceMs: number;
   /** Zero means unbounded: requests queue rather than being rejected. */
   queueCapacity: number;
+  /**
+   * The API this service exposes, and what each call costs.
+   *
+   * Optional and sparse. A service without one behaves exactly as services did
+   * before endpoints existed, and adding one can never make a component
+   * invalid — there is always a mean to fall back to. The engine omits it from
+   * the wire when empty, so `PARAM_FIELDS` cannot require it.
+   */
+  endpoints?: Endpoint[];
 }
 
 export interface CacheParams {
@@ -245,12 +279,12 @@ export const PARAMS_KEY = {
 
 export const PARAM_FIELDS = {
   loadBalancer: { algorithm: true, overheadMs: true },
-  service: { instances: true, meanServiceMs: true, queueCapacity: true },
+  service: { instances: true, meanServiceMs: true, queueCapacity: true, endpoints: true },
   cache: { hitRatio: true, hitLatencyMs: true, writePolicy: true },
   database: { replicas: true, meanReadMs: true, meanWriteMs: true, poolSize: true },
 } satisfies {
   loadBalancer: Fields<LoadBalancerParams>;
-  service: Fields<ServiceParams>;
+  service: Fields<Required<ServiceParams>>;
   cache: Fields<CacheParams>;
   database: Fields<DatabaseParams>;
 };
@@ -264,6 +298,24 @@ export const NODE_FIELDS = {
   cache: true,
   database: true,
 } satisfies Fields<Required<DesignNode>>;
+
+/**
+ * Parameter fields the engine leaves off the wire when they are empty.
+ *
+ * Mirrors the `omitempty` tags in engine/internal/model/params.go, and exists
+ * so the contract test can tell "this design does not describe its API" from
+ * "this side invented a field". Without it, either every preset would have to
+ * carry every optional key or the test would have to stop comparing key sets —
+ * and the second is the check that catches a field dropped on this side, which
+ * is the failure that gets accepted and answered about a different design.
+ */
+export const OMITTED_WHEN_EMPTY = ["endpoints"];
+
+export const ENDPOINT_FIELDS = {
+  name: true,
+  operation: true,
+  meanServiceMs: true,
+} satisfies Fields<Endpoint>;
 
 export const EDGE_FIELDS = { from: true, to: true } satisfies Fields<DesignEdge>;
 

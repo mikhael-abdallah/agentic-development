@@ -16,7 +16,15 @@
         "id": "api",
         "kind": "service",
         "label": "Redirect service",
-        "service": {"instances": 4, "meanServiceMs": 8, "queueCapacity": 500}
+        "service": {
+          "instances": 4,
+          "meanServiceMs": 8,
+          "queueCapacity": 500,
+          "endpoints": [
+            {"name": "GET /{code}", "operation": "resolve", "meanServiceMs": 7},
+            {"name": "POST /shorten", "operation": "shorten", "meanServiceMs": 25}
+          ]
+        }
       },
       {
         "id": "cache",
