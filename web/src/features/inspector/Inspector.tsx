@@ -1,6 +1,7 @@
 "use client";
 
 import { Numbers, Row } from "@/components/Field";
+import { Api } from "@/features/inspector/Api";
 import {
   CACHE_FIELDS,
   DATABASE_FIELDS,
@@ -20,10 +21,52 @@ import {
   type Algorithm,
   type CacheParams,
   type DesignNode,
+  type Endpoint,
   type LoadBalancerParams,
+  type ServiceParams,
   WRITE_POLICIES,
   type WritePolicy,
 } from "@/lib/topology";
+
+interface ServiceProps {
+  readonly params: ServiceParams;
+  readonly operations: string[];
+  readonly onParams: (params: ServiceParams) => void;
+}
+
+/**
+ * A pool of servers, and the API it answers.
+ *
+ * Emptying the list takes the key with it rather than leaving `endpoints: []`.
+ * The engine reads the two the same way and so does the clipboard — absent and
+ * empty both mean "this service does not describe its API" — so leaving an
+ * empty list behind would make deleting the last endpoint and then copying the
+ * component produce something that is not equal to what was copied, while
+ * behaving identically. Equal is worth more than equivalent here: it is what a
+ * round trip can check.
+ */
+function Service({ params, operations, onParams }: ServiceProps) {
+  const setEndpoints = (endpoints: Endpoint[]) => {
+    if (endpoints.length > 0) {
+      onParams({ ...params, endpoints });
+      return;
+    }
+    // Rebuilt field by field rather than spread-and-delete, so that a required
+    // parameter added to the contract fails to compile here instead of being
+    // silently dropped the first time someone empties an API.
+    onParams({
+      instances: params.instances,
+      meanServiceMs: params.meanServiceMs,
+      queueCapacity: params.queueCapacity,
+    });
+  };
+  return (
+    <>
+      <Numbers subject={params} fields={SERVICE_FIELDS} onChange={onParams} />
+      <Api endpoints={params.endpoints ?? []} operations={operations} onChange={setEndpoints} />
+    </>
+  );
+}
 
 interface BalancerProps {
   readonly params: LoadBalancerParams;
@@ -111,6 +154,7 @@ function Cache({ params, onParams }: CacheProps) {
 
 interface ParamsProps {
   readonly node: DesignNode;
+  readonly operations: string[];
   readonly onChange: (node: DesignNode) => void;
 }
 
@@ -121,7 +165,7 @@ interface ParamsProps {
  * editor — the alternative being a component you can select and not change,
  * which reads as a broken panel rather than a missing one.
  */
-function Params({ node, onChange }: ParamsProps) {
+function Params({ node, operations, onChange }: ParamsProps) {
   switch (node.kind) {
     case "client":
       return (
@@ -141,10 +185,10 @@ function Params({ node, onChange }: ParamsProps) {
       );
     case "service":
       return node.service === undefined ? null : (
-        <Numbers
-          subject={node.service}
-          fields={SERVICE_FIELDS}
-          onChange={(service) => {
+        <Service
+          params={node.service}
+          operations={operations}
+          onParams={(service) => {
             onChange({ ...node, service });
           }}
         />
@@ -206,6 +250,9 @@ function Wiring({ title, empty, contracts }: WiringProps) {
 
 interface InspectorProps {
   readonly node: DesignNode | undefined;
+  /** The names of the operations the current load offers, so a service's API
+   *  can say when an endpoint names traffic nothing sends. */
+  readonly operations: string[];
   /** What reaches this component and what it passes on. Derived from the
    *  design's own edges rather than from the kind, because what a database is
    *  handed depends on whether a cache sits in front of it. */
@@ -223,7 +270,7 @@ interface InspectorProps {
  * and an arrival rate look like two settings of the same thing — one of which
  * would silently belong to a component nobody remembers selecting.
  */
-export function Inspector({ node, wiring, onChange, onRemove }: InspectorProps) {
+export function Inspector({ node, operations, wiring, onChange, onRemove }: InspectorProps) {
   return (
     <aside className="panel inspector" aria-label="Component settings" data-kind={node?.kind}>
       <p className="panel__scope">Selected component</p>
@@ -250,7 +297,7 @@ export function Inspector({ node, wiring, onChange, onRemove }: InspectorProps) 
               />
             )}
           </Row>
-          <Params node={node} onChange={onChange} />
+          <Params node={node} operations={operations} onChange={onChange} />
           <Wiring
             title="Receives"
             empty="Nothing sends to this yet — it will not be reached by a run."

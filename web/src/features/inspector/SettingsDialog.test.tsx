@@ -18,6 +18,7 @@ function show(open: boolean, onClose = vi.fn()) {
   const result = render(
     <SettingsDialog
       node={newNode("cache", "cache", "Key cache")}
+      operations={["resolve", "shorten"]}
       wiring={NO_WIRING}
       open={open}
       onChange={vi.fn()}

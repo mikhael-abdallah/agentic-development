@@ -71,6 +71,7 @@ export default function Home() {
       </div>
       <SettingsDialog
         node={selected}
+        operations={workload.operations.map((operation) => operation.name)}
         wiring={contractsOf(controller.design.topology, selected?.id ?? "")}
         open={editing && selected !== undefined}
         onChange={controller.replace}
